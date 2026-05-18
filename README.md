@@ -78,6 +78,10 @@ See the [`render_webgl`](/examples/render_webgl) example.
 
 ![WebGL-rendered Aka](https://fs.speykious.dev/inox2d/inox2d-webgl-foxgirl.png)
 
+### WebGPU demo
+
+Also see the [`render_webgl`](/examples/render_webgl) example. They build and run the same way.
+
 ## Implementation
 
 Inox2D aims to support all features currently present in the standard D implementation.

@@ -7,7 +7,6 @@ pub mod renderer;
 pub mod cmd;
 pub mod error;
 
-mod tests;
 
 // pub struct WgpuRenderer {
 //     // Resources

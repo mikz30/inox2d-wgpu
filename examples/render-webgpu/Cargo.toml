@@ -1,12 +1,12 @@
 [package]
-name = "render-webgpu2"
+name = "render-webgpu"
 version = "0.1.0"
 edition = "2021"
 
 [dependencies]
 common = { path = "../common" }
 inox2d = { path = "../../inox2d" }
-inox2d-wgpu = { path = "../../inox2d-wgpu2" }
+inox2d-wgpu = { path = "../../inox2d-wgpu" }
 wgpu = "28.0.0"
 glam = "0.29.0"
 wasm-bindgen = "0.2.87"
