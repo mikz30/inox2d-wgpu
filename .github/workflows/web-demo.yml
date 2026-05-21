@@ -1,0 +1,30 @@
+name: Web Demo Pages
+
+on:
+  push:
+    branches: [ "web_demo" ]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+    - name: Install Rust Toolchain
+      uses: dtolnay/rust-toolchain@stable
+      with:
+        targets: wasm32-unknown-unknown
+    - name: Download and Install Trunk
+      run: 
+        cargo install trunk --locked
+    - name: Build with Trunk
+      run: |
+        cd examples/render_webgpu | trunk build --public-url /inox2d-wgpu/
+    - name: Start page
+      run:
+        trunk serve
+    
