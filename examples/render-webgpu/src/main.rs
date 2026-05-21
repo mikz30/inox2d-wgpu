@@ -179,8 +179,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
         })
     };
 	// 1. Get the current browser window location
-	let window = web_sys::window().ok_or("No window found")?;
-	let location = window.location();
+	let location = web_sys::window().ok_or("No window found")?.location();
 	let origin = location.origin().map_err(|_| "Could not get origin")?;   // e.g., "https://mikz30.github.io"
 	let pathname = location.pathname().map_err(|_| "Could not get path")?; // e.g., "/inox2d-wgpu/"
 	
