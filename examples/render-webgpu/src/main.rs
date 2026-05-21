@@ -122,7 +122,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
     canvas.set_height(height);
 
     let caps = surface.get_capabilities(&adapter);
-    let format = caps.formats.iter().copied().find(|f| !f.is_srgb()).unwrap_or(caps.formats[0]);
+    let format = caps.formats.iter().copied().find(|f| f.is_srgb()).unwrap_or(caps.formats[0]);
 
     // // Force transparency if supported
     // let alpha_mode = if caps.alpha_modes.contains(&wgpu::CompositeAlphaMode::PreMultiplied) {
