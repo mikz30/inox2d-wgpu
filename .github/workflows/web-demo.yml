@@ -25,8 +25,11 @@ jobs:
       run: |
         cd examples/render-webgpu
         trunk build --public-url /inox2d-wgpu/
-    - name: Start page
-      run: |
-        cd examples/render-webgpu
-        trunk serve
+    - name: Upload Artifact
+      uses: actions/upload-pages-artifact@v3
+      with:
+        path: examples/render-webgpu/dist
+    - name: Deploy to GitHub Pages
+      id: deployment
+      uses: actions/deploy-pages@v4
     
