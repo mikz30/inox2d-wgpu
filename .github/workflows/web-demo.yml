@@ -27,9 +27,8 @@ jobs:
       run: 
         cargo install trunk --locked
     - name: Build with Trunk
-      run: |
-        cd examples/render-webgpu
-        trunk build --public-url /inox2d-wgpu/
+      working-directory: examples/render-webgpu
+      run: trunk build --public-url /inox2d-wgpu/
     - name: Upload Artifact
       uses: actions/upload-pages-artifact@v3
       with:
