@@ -26,6 +26,7 @@ jobs:
         cd examples/render-webgpu
         trunk build --public-url /inox2d-wgpu/
     - name: Start page
-      run:
+      run: |
+        cd examples/render-webgpu
         trunk serve
     
