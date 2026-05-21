@@ -122,7 +122,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
     canvas.set_height(height);
 
     let caps = surface.get_capabilities(&adapter);
-    let format = caps.formats.iter().copied().find(|f| f.is_srgb()).unwrap_or(caps.formats[0]);
+    let format = caps.formats.iter().copied().find(|f| !f.is_srgb()).unwrap_or(caps.formats[0]);
 
     // // Force transparency if supported
     // let alpha_mode = if caps.alpha_modes.contains(&wgpu::CompositeAlphaMode::PreMultiplied) {
@@ -178,8 +178,16 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
             depth_view,
         })
     };
-
-    let res = reqwest::Client::new().get("assets/puppet.inp").send().await.map_err(|e| e.to_string())?;
+	// 1. Get the current browser window location
+	let window = web_sys::window().ok_or("No window found")?;
+	let location = window.location();
+	let origin = location.origin().map_err(|_| "Could not get origin")?;   // e.g., "https://mikz30.github.io"
+	let pathname = location.pathname().map_err(|_| "Could not get path")?; // e.g., "/inox2d-wgpu/"
+	
+	// 2. Safely reconstruct the absolute URL depending on whether it's local or production
+	let base_path = if pathname.ends_with('/') { &pathname } else { "/" };
+	let asset_url = format!("{}{}/assets/puppet.inp", origin, base_path);
+    let res = reqwest::Client::new().get(&asset_url).send().await.map_err(|e| e.to_string())?;
     let model_bytes = res.bytes().await.map_err(|e| e.to_string())?;
     let mut self_context = create_puppet_context(&device, &queue, &model_bytes)?;
 
