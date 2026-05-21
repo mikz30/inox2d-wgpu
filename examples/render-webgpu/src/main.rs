@@ -179,7 +179,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
         })
     };
 
-    let res = reqwest::Client::new().get(format!("{}/assets/puppet.inp", base_url())).send().await.map_err(|e| e.to_string())?;
+    let res = reqwest::Client::new().get("/assets/puppet.inp")).send().await.map_err(|e| e.to_string())?;
     let model_bytes = res.bytes().await.map_err(|e| e.to_string())?;
     let mut self_context = create_puppet_context(&device, &queue, &model_bytes)?;
 
