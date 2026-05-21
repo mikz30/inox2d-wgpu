@@ -2,7 +2,7 @@ name: Web Demo Pages
 
 on:
   push:
-    branches: [ "web_demo" ]
+    branches: [ "web-demo" ]
 
 env:
   CARGO_TERM_COLOR: always
