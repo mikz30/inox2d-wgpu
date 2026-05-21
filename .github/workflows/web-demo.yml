@@ -23,7 +23,7 @@ jobs:
         cargo install trunk --locked
     - name: Build with Trunk
       run: |
-        cd examples/render_webgpu | trunk build --public-url /inox2d-wgpu/
+        cd examples/render-webgpu | trunk build --public-url /inox2d-wgpu/
     - name: Start page
       run:
         trunk serve
