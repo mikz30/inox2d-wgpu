@@ -118,6 +118,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
 
     let width = canvas.client_width() as u32;
     let height = canvas.client_height() as u32;
+	info!("canvas height and width {:?}", [height, width])
     canvas.set_width(width);
     canvas.set_height(height);
 
