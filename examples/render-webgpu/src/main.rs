@@ -141,7 +141,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
         width,
         height,
         present_mode: wgpu::PresentMode::Fifo,
-        alpha_mode: wgpu::CompositeAlphaMode::PreMultiplied,
+        alpha_mode: caps.alpha_modes[0],
         view_formats: vec![],
         desired_maximum_frame_latency: 2,
     };
