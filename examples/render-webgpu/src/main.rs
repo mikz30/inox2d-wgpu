@@ -242,7 +242,11 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
                         ops: wgpu::Operations { load: wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT), store: wgpu::StoreOp::Store },
                         depth_slice: None,
                     })],
-                    depth_stencil_attachment: None,
+                    depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
+                            view: &ctx.depth_view,
+                            depth_ops: Some(wgpu::Operations { load: wgpu::LoadOp::Clear(1.0), store: wgpu::StoreOp::Store }),
+                            stencil_ops: Some(wgpu::Operations { load: wgpu::LoadOp::Clear(0), store: wgpu::StoreOp::Store }),
+					}),
                     timestamp_writes: None,
                     occlusion_query_set: None,
                     multiview_mask: None,
@@ -267,26 +271,26 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
                 ctx.renderer.draw(&ctx.puppet);
                 ctx.renderer.write_uniforms();
 
-                // Clear depth/stencil for this puppet
-                {
-                     let _ = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                        label: Some("Puppet Clear Depth"),
-                        color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                            view: &view,
-                            resolve_target: None,
-                            ops: wgpu::Operations { load: wgpu::LoadOp::Load, store: wgpu::StoreOp::Store },
-                            depth_slice: None,
-                        })],
-                        depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
-                            view: &ctx.depth_view,
-                            depth_ops: Some(wgpu::Operations { load: wgpu::LoadOp::Clear(1.0), store: wgpu::StoreOp::Store }),
-                            stencil_ops: Some(wgpu::Operations { load: wgpu::LoadOp::Clear(0), store: wgpu::StoreOp::Store }),
-                        }),
-                        timestamp_writes: None,
-                        occlusion_query_set: None,
-                        multiview_mask: None,
-                    });
-                }
+                // // Clear depth/stencil for this puppet
+                // {
+                //      let _ = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                //         label: Some("Puppet Clear Depth"),
+                //         color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                //             view: &view,
+                //             resolve_target: None,
+                //             ops: wgpu::Operations { load: wgpu::LoadOp::Load, store: wgpu::StoreOp::Store },
+                //             depth_slice: None,
+                //         })],
+                //         depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
+                //             view: &ctx.depth_view,
+                //             depth_ops: Some(wgpu::Operations { load: wgpu::LoadOp::Clear(1.0), store: wgpu::StoreOp::Store }),
+                //             stencil_ops: Some(wgpu::Operations { load: wgpu::LoadOp::Clear(0), store: wgpu::StoreOp::Store }),
+                //         }),
+                //         timestamp_writes: None,
+                //         occlusion_query_set: None,
+                //         multiview_mask: None,
+                //     });
+                // }
 
                 ctx.renderer.render(&device, &queue, &mut encoder, &view, &ctx.depth_view);
             }
