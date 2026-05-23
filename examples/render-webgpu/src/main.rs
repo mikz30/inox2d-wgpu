@@ -227,7 +227,13 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
 
             let output = match state.surface.get_current_texture() {
                 Ok(output) => output,
-                Err(_) => return,
+                Err(_) => {
+			        tracing::error!("Surface texture error: {:?}", e);
+			        drop(state); // Crucial: release the borrow before invoking JS
+			        let id = request_animation_frame(&window_loop, anim_loop_f.borrow().as_ref().unwrap());
+			        state_loop.borrow_mut().animation_id = Some(id);
+			        return;
+			    },
             };
             let view = output.texture.create_view(&wgpu::TextureViewDescriptor::default());
             let mut encoder = state.device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("Render Encoder") });
