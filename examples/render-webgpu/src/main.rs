@@ -240,7 +240,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
                     color_attachments: &[Some(wgpu::RenderPassColorAttachment {
                         view: &view,
                         resolve_target: None,
-                        ops: wgpu::Operations { load: wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT), store: wgpu::StoreOp::Store },
+                        ops: wgpu::Operations { load: wgpu::LoadOp::Clear(wgpu::Color::GREEN), store: wgpu::StoreOp::Store },
                         depth_slice: None,
                     })],
                     depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
