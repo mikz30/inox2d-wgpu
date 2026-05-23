@@ -234,6 +234,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
 
             // Clear pass
             {
+				let ctx = &state.self_context;
                 let _ = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                     label: Some("Clear Pass"),
                     color_attachments: &[Some(wgpu::RenderPassColorAttachment {
