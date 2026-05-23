@@ -227,7 +227,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
 
             let output = match state.surface.get_current_texture() {
                 Ok(output) => output,
-                Err(_) => {
+                Err(e) => {
 			        tracing::error!("Surface texture error: {:?}", e);
 			        drop(state); // Crucial: release the borrow before invoking JS
 			        let id = request_animation_frame(&window_loop, anim_loop_f.borrow().as_ref().unwrap());
