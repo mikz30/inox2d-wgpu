@@ -52,30 +52,13 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
     use inox2d::puppet::Puppet;
     use inox2d_wgpu::WgpuRenderer;
     use common::scene::ExampleSceneController;
-    struct PuppetContext {
-        renderer: WgpuRenderer,
-        puppet: Puppet,
-        param_values: HashMap<String, Vec2>,
-        depth_texture: wgpu::Texture,
-        depth_view: wgpu::TextureView,
-    }
-
-    struct AppState {
-        device: Rc<wgpu::Device>,
-        queue: Rc<wgpu::Queue>,
-        surface: wgpu::Surface<'static>,
-        config: wgpu::SurfaceConfiguration,
-        self_context: PuppetContext,
-        scene_ctrl: ExampleSceneController,
-        canvas: web_sys::HtmlCanvasElement,
-        animation_id: Option<i32>,
-    }
+    
     let events = winit::event_loop::EventLoop::new().unwrap();
     let window = create_window(&events)?;
 
     // Make sure the context has a stencil buffer
-	let context_options = js_sys::Object::new();
-	js_sys::Reflect::set(&context_options, &"stencil".into(), &true.into()).unwrap();
+	// let context_options = js_sys::Object::new();
+	// js_sys::Reflect::set(&context_options, &"stencil".into(), &true.into()).unwrap();
     info!("Creating canvas");
     let canvas = web_sys::window()
 		.unwrap()
@@ -86,61 +69,11 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
 		.dyn_into::<web_sys::HtmlCanvasElement>()
 		.unwrap();
 
-    let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
-        backends: wgpu::Backends::all(),
-        ..Default::default()
-    });
-
-    let surface = instance.create_surface(wgpu::SurfaceTarget::Canvas(canvas.clone())).map_err(|e| e.to_string())?;
-    
-    let adapter = instance.request_adapter(&wgpu::RequestAdapterOptions {
-        power_preference: wgpu::PowerPreference::default(),
-        compatible_surface: Some(&surface),
-        force_fallback_adapter: false,
-    }).await.map_err(|e| e.to_string())?;
-
-    info!("Adapter limits: {:?}", adapter.limits());
-
-    let (device, queue) = adapter.request_device(
-        &wgpu::DeviceDescriptor {
-            required_features: wgpu::Features::empty(),
-            required_limits: adapter.limits(),
-            label: None,
-            memory_hints: wgpu::MemoryHints::Performance,
-            ..Default::default()
-        }
-    ).await.map_err(|e| e.to_string())?;
-
     let width = canvas.client_width() as u32;
     let height = canvas.client_height() as u32;
     canvas.set_width(width);
     canvas.set_height(height);
 
-    let caps = surface.get_capabilities(&adapter);
-    let format = caps.formats.iter().copied().find(|f| !f.is_srgb()).unwrap_or(caps.formats[0]);
-
-    // // Force transparency if supported
-    // let alpha_mode = if caps.alpha_modes.contains(&wgpu::CompositeAlphaMode::PreMultiplied) {
-    //     wgpu::CompositeAlphaMode::PreMultiplied
-    // } else if caps.alpha_modes.contains(&wgpu::CompositeAlphaMode::PostMultiplied) {
-    //     wgpu::CompositeAlphaMode::PostMultiplied
-    // } else {
-    //     wgpu::CompositeAlphaMode::Auto
-    // };
-
-    // info!("Using alpha mode: {:?}", alpha_mode);
-
-    let config = wgpu::SurfaceConfiguration {
-        usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
-        format,
-        width,
-        height,
-        present_mode: wgpu::PresentMode::Fifo,
-        alpha_mode: wgpu::CompositeAlphaMode::PreMultiplied,
-        view_formats: vec![],
-        desired_maximum_frame_latency: 2,
-    };
-    surface.configure(&device, &config);
 
     let res = reqwest::Client::new().get(format!("{}/assets/puppet.inp", base_url())).send().await.map_err(|e| e.to_string())?;
     let model_bytes = res.bytes().await.map_err(|e| e.to_string())?;
@@ -151,21 +84,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
     model.puppet.init_params();
     model.puppet.init_physics();
 
-    let mut renderer = WgpuRenderer::new(device.clone(), queue.clone(), &model, format, width, height)
-        .map_err(|e| e.to_string())?;
-
-    let depth_texture = device.create_texture(&wgpu::TextureDescriptor {
-        label: Some("Depth Texture"),
-        size: wgpu::Extent3d { width, height, depth_or_array_layers: 1 },
-        mip_level_count: 1,
-        sample_count: 1,
-        dimension: wgpu::TextureDimension::D2,
-        format: wgpu::TextureFormat::Depth24PlusStencil8,
-        usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
-        view_formats: &[],
-    });
-    let depth_view = depth_texture.create_view(&wgpu::TextureViewDescriptor::default());
-
+    let mut renderer = inox2d_wgpu::from_canvas(&canvas, &model, Some(width), Some(height)).await.map_err(|e| e.to_string())?;
 
     // Initial scale
     let scale = 0.15 * (height as f32 / 800.0);
@@ -177,10 +96,6 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
     let puppet = Rc::new(RefCell::new(model.puppet));
     let scene_ctrl = Rc::new(RefCell::new(scene_ctrl));
     let window_ = web_sys::window().unwrap();
-    let surface = Rc::new(RefCell::new(surface));
-    let config = Rc::new(RefCell::new(config));
-    let depth_texture = Rc::new(RefCell::new(depth_texture));
-    let depth_view = Rc::new(RefCell::new(depth_view));
     let animation_loop = {
         let anim_loop_f: Rc<RefCell<Option<Closure<dyn FnMut()>>>> = Rc::new(RefCell::new(None));
         let anim_loop_g = anim_loop_f.clone();
@@ -188,48 +103,48 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
         let renderer = renderer.clone();
         let scene_ctrl = scene_ctrl.clone();
 
-        // DELETE THESE LATER
-        let surface = surface.clone();
-        let depth_view = depth_view.clone();
-
         let window_loop = window_.clone();
 
         *anim_loop_g.borrow_mut() = Some(Closure::new(move || {
 
             scene_ctrl.borrow_mut().update(&mut renderer.borrow_mut().camera);
 
-            let current_texture = surface.borrow().get_current_texture();
-            let output = match current_texture {
-                Ok(output) => output,
-                Err(_) => return,
-            };
-            let view = output.texture.create_view(&wgpu::TextureViewDescriptor::default());
-            let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("Render Encoder") });
+            // let current_texture = surface.borrow().get_current_texture();
+            // let output = match current_texture {
+            //     Ok(output) => output,
+            //     Err(_) => return,
+            // };
+            // let view = output.texture.create_view(&wgpu::TextureViewDescriptor::default());
+            // let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("Render Encoder") });
 
-            // Clear pass (color and depth/stencil)
-            {
-                let _ = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                    label: Some("Clear Pass"),
-                    color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                        view: &view,
-                        resolve_target: None,
-                        ops: wgpu::Operations { load: wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT), store: wgpu::StoreOp::Store },
-                        depth_slice: None,
-                    })],
-                    depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
-                        view: &depth_view.borrow(),
-                        depth_ops: Some(wgpu::Operations { load: wgpu::LoadOp::Clear(1.0), store: wgpu::StoreOp::Store }),
-                        stencil_ops: Some(wgpu::Operations { load: wgpu::LoadOp::Clear(0), store: wgpu::StoreOp::Store }),
-                    }),
-                    timestamp_writes: None,
-                    occlusion_query_set: None,
-                    multiview_mask: None,
-                });
-            }
+            // // Clear pass (color and depth/stencil)
+            // {
+            //     let _ = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+            //         label: Some("Clear Pass"),
+            //         color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+            //             view: &view,
+            //             resolve_target: None,
+            //             ops: wgpu::Operations { load: wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT), store: wgpu::StoreOp::Store },
+            //             depth_slice: None,
+            //         })],
+            //         depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
+            //             view: &depth_view.borrow(),
+            //             depth_ops: Some(wgpu::Operations { load: wgpu::LoadOp::Clear(1.0), store: wgpu::StoreOp::Store }),
+            //             stencil_ops: Some(wgpu::Operations { load: wgpu::LoadOp::Clear(0), store: wgpu::StoreOp::Store }),
+            //         }),
+            //         timestamp_writes: None,
+            //         occlusion_query_set: None,
+            //         multiview_mask: None,
+            //     });
+            // }
+            let (mut encoder, view, output) = match renderer.borrow_mut().clear() {
+                Some((encoder, view, output)) => (encoder, view, output),
+                None => return,
+            };
 
             let dt = scene_ctrl.borrow().current_elapsed();
 
-            // Render Self
+            // Render Closure
             {
                 let mut puppet = puppet.borrow_mut(); 
                 puppet.begin_frame();
@@ -240,17 +155,10 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
 					.set("Head:: Yaw-Pitch", Vec2::new(dt.cos(), dt.sin()));
                 puppet.end_frame(dt);
 
-                renderer.borrow_mut().buffers.update(&device, &queue, &puppet);
-                renderer.borrow_mut().prepare();
+                renderer.borrow_mut().on_begin_draw(&puppet);
                 renderer.borrow_mut().draw(&puppet);
-                renderer.borrow_mut().write_uniforms();
-
-                renderer.borrow_mut().render(&device, &queue, &mut encoder, &view, &depth_view.borrow());
             }
-
-            let _ = &queue.submit(std::iter::once(encoder.finish()));
-            output.present();          
-
+            renderer.borrow_mut().on_end_draw(encoder, &view, output);
             let _ = request_animation_frame(&window_loop, anim_loop_f.borrow().as_ref().unwrap());
         }));
         let _ = request_animation_frame(&window_, anim_loop_g.borrow().as_ref().unwrap());
@@ -266,11 +174,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
 			Event::WindowEvent { ref event, .. } => match event {
 				WindowEvent::Resized(physical_size) => {
 					// Handle window resizing
-                    let surface = surface.borrow();
-                    let mut config = config.borrow_mut();
-                    let mut depth_texture = depth_texture.borrow_mut();
-                    let mut depth_view = depth_view.borrow_mut();
-					renderer.borrow_mut().resize(physical_size.width, physical_size.height, &surface, &mut config, &mut depth_texture, &mut depth_view);
+					renderer.borrow_mut().resize(physical_size.width, physical_size.height);//, &surface, &mut config, &mut depth_texture, &mut depth_view);
                     canvas.set_width(physical_size.width);
 					canvas.set_height(physical_size.height);
 					window.request_redraw();

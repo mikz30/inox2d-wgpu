@@ -9,6 +9,7 @@ pub mod error;
 use std::cell::RefCell;
 use wgpu::util::DeviceExt;
 use inox2d::model::Model;
+use inox2d::puppet::Puppet;
 use inox2d::render::{InoxRenderer, TexturedMeshRenderCtx};
 use inox2d::node::InoxNodeUuid;
 use inox2d::node::drawables::{TexturedMeshComponents, CompositeComponents};
@@ -22,6 +23,9 @@ use crate::texture::TextureManager;
 use crate::buffers::BufferManager;
 use crate::uniforms::{Uniforms, UNIFORM_ALIGNMENT};
 use crate::cmd::{RenderCommand, MaskingMode};
+
+use wgpu::web_sys;
+use log::info;
 
 pub struct CompositeResources {
     pub albedo: wgpu::TextureView,
@@ -139,6 +143,12 @@ pub struct WgpuRenderer {
 
     // The surface format is needed for pipeline creation
     surface_format: wgpu::TextureFormat,
+
+    surface: wgpu::Surface<'static>,
+    surface_config: wgpu::SurfaceConfiguration,
+
+    depth_view: wgpu::TextureView,
+    depth_texture: wgpu::Texture,
 }
 
 impl WgpuRenderer {
@@ -149,6 +159,8 @@ impl WgpuRenderer {
         format: wgpu::TextureFormat,
         width: u32,
         height: u32,
+        surface: wgpu::Surface<'static>,
+        surface_config: wgpu::SurfaceConfiguration,
     ) -> Result<Self> {
         let textures = TextureManager::new(&device, &queue, model);
         let mut buffers = BufferManager::new(&device);
@@ -176,6 +188,19 @@ impl WgpuRenderer {
             label: Some("Inox Uniform Bind Group"),
         });
 
+        let depth_texture = device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("Depth Texture"),
+            size: wgpu::Extent3d { width, height, depth_or_array_layers: 1 },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: wgpu::TextureFormat::Depth24PlusStencil8,
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+            view_formats: &[],
+        });
+        let depth_view = depth_texture.create_view(&wgpu::TextureViewDescriptor::default());
+
+
         Ok(Self {
             device,
             queue,
@@ -196,6 +221,10 @@ impl WgpuRenderer {
             viewport_width: width,
             viewport_height: height,
             surface_format: format,
+            surface,
+            surface_config,
+            depth_texture,
+            depth_view,
         })
     }
 
@@ -273,11 +302,8 @@ impl WgpuRenderer {
     /// The function you will call in the render loop to execute the recorded commands.
     pub fn render(
         &mut self,
-        device: &wgpu::Device,
-        _queue: &wgpu::Queue,
         encoder: &mut wgpu::CommandEncoder,
         target_view: &wgpu::TextureView,
-        target_depth: &wgpu::TextureView,
     ) {
         let mut pipelines = self.pipelines.borrow_mut();
         let commands = self.command_buffer.borrow();
@@ -287,7 +313,7 @@ impl WgpuRenderer {
            self.composite_resources.as_ref().unwrap().width != self.viewport_width ||
            self.composite_resources.as_ref().unwrap().height != self.viewport_height {
             self.composite_resources = Some(CompositeResources::new(
-                device, 
+                &self.device, 
                 &pipelines.composite_layout, 
                 self.viewport_width, 
                 self.viewport_height
@@ -369,7 +395,7 @@ impl WgpuRenderer {
                             // Check redundancy for Pipeline
                             let current_key = (*blend_mode, mask_state);
                             if last_pipeline_key != Some(current_key) {
-                                let pipeline = pipelines.get_pipeline(device, wgpu::TextureFormat::Rgba8Unorm, *blend_mode, mask_state);
+                                let pipeline = pipelines.get_pipeline(&self.device, wgpu::TextureFormat::Rgba8Unorm, *blend_mode, mask_state);
                                 pass.set_pipeline(pipeline);
                                 last_pipeline_key = Some(current_key);
                             }
@@ -406,7 +432,7 @@ impl WgpuRenderer {
                         depth_slice: None,
                     })],
                     depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
-                        view: target_depth,
+                        view: &self.depth_view,
                         depth_ops: Some(wgpu::Operations { load: wgpu::LoadOp::Load, store: wgpu::StoreOp::Store }),
                         stencil_ops: Some(wgpu::Operations { load: wgpu::LoadOp::Load, store: wgpu::StoreOp::Store }),
                     }),
@@ -425,7 +451,7 @@ impl WgpuRenderer {
                         
                         RenderCommand::EndComposite { vertex_offset: _, index_offset, index_count, blend_mode, .. } => {
                             // Draw Composite Result
-                            let pipeline = pipelines.get_composite_pipeline(device, self.surface_format, *blend_mode, MaskState::None);
+                            let pipeline = pipelines.get_composite_pipeline(&self.device, self.surface_format, *blend_mode, MaskState::None);
                             pass.set_pipeline(pipeline);
                             
                             // Composite binds use Group 0, clobbering texture state
@@ -462,7 +488,7 @@ impl WgpuRenderer {
                             // Check Redundancy: Pipeline
                             let current_key = (*blend_mode, mask_state);
                             if last_pipeline_key != Some(current_key) {
-                                let pipeline = pipelines.get_pipeline(device, self.surface_format, *blend_mode, mask_state);
+                                let pipeline = pipelines.get_pipeline(&self.device, self.surface_format, *blend_mode, mask_state);
                                 pass.set_pipeline(pipeline);
                                 last_pipeline_key = Some(current_key);
                             }
@@ -488,18 +514,12 @@ impl WgpuRenderer {
         }
     }
 
-    pub fn resize(&mut self, width: u32, height: u32, 
-                        surface: &wgpu::Surface, 
-                        config: &mut wgpu::SurfaceConfiguration, 
-                        depth_texture: &mut wgpu::Texture,
-                        depth_view: &mut wgpu::TextureView
-    ) {
+    pub fn resize(&mut self, width: u32, height: u32) {
         if width > 0 && height > 0 {
-            config.height = height;
-            config.width = width;
-            surface.configure(&self.device, config);
-
-            let device = self.device.clone();
+            
+            self.surface_config.height = height;
+            self.surface_config.width = width;
+            self.surface.configure(&self.device, &self.surface_config);
 
             self.viewport_width = width;
             self.viewport_height = height;
@@ -516,9 +536,41 @@ impl WgpuRenderer {
             });
             let new_depth_view = new_depth_texture.create_view(&wgpu::TextureViewDescriptor::default());
 
-            *depth_texture = new_depth_texture;
-            *depth_view = new_depth_view;           
+            self.depth_texture = new_depth_texture;
+            self.depth_view = new_depth_view;           
         }
+    }
+
+    pub fn clear(&self) -> Option<(wgpu::CommandEncoder, wgpu::TextureView, wgpu::SurfaceTexture)> {
+        let current_texture = self.surface.get_current_texture();
+        let output = match current_texture {
+            Ok(output) => output,
+            Err(_) => return None,
+        };
+        let view = output.texture.create_view(&wgpu::TextureViewDescriptor::default());
+        let mut encoder = self.device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("Render Encoder") });
+
+        // Clear pass (color and depth/stencil)
+        {
+            let _ = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("Clear Pass"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: &view,
+                    resolve_target: None,
+                    ops: wgpu::Operations { load: wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT), store: wgpu::StoreOp::Store },
+                    depth_slice: None,
+                })],
+                depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
+                    view: &self.depth_view,
+                    depth_ops: Some(wgpu::Operations { load: wgpu::LoadOp::Clear(1.0), store: wgpu::StoreOp::Store }),
+                    stencil_ops: Some(wgpu::Operations { load: wgpu::LoadOp::Clear(0), store: wgpu::StoreOp::Store }),
+                }),
+                timestamp_writes: None,
+                occlusion_query_set: None,
+                multiview_mask: None,
+            });
+        }
+        Some((encoder, view, output))
     }
 }
 
@@ -681,13 +733,84 @@ impl InoxRenderer for WgpuRenderer {
 
 }
 
+impl WgpuRenderer {
+    pub fn on_begin_draw(&mut self, puppet: &Puppet) {
+        self.buffers.update(&self.device, &self.queue, puppet);
+        self.prepare();
+    }
 
-
-pub struct WgpuConfig {
-    pub power_preference: wgpu::PowerPreference,
-    pub memory_hints: wgpu::MemoryHints,
-    pub depth_format: wgpu::TextureFormat,
-    pub present_mode: wgpu::PresentMode,
-    pub alpha_mode: wgpu::CompositeAlphaMode,
+    pub fn on_end_draw(&mut self, mut encoder: wgpu::CommandEncoder, view: &wgpu::TextureView, output: wgpu::SurfaceTexture) {
+        self.write_uniforms();
+        self.render(&mut encoder, view);
+    
+        let _ = &self.queue.submit(std::iter::once(encoder.finish()));
+        output.present();
+    }
 }
 
+pub async fn from_canvas(canvas: &web_sys::HtmlCanvasElement, 
+    model: &Model,
+    width: Option<u32>, 
+    height: Option<u32>
+) -> Result<WgpuRenderer> {
+    let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
+        backends: wgpu::Backends::all(),
+        ..Default::default()
+    });
+
+    let width = width.unwrap_or(canvas.client_width() as u32);
+    let height = height.unwrap_or(canvas.client_height() as u32);
+
+    let surface = instance.create_surface(wgpu::SurfaceTarget::Canvas(canvas.clone())).map_err(|e| e.to_string())?;
+    
+    let adapter = instance.request_adapter(&wgpu::RequestAdapterOptions {
+        power_preference: wgpu::PowerPreference::default(),
+        compatible_surface: Some(&surface),
+        force_fallback_adapter: false,
+    }).await.map_err(|e| e.to_string())?;
+
+    info!("Adapter limits: {:?}", adapter.limits());
+
+    let (device, queue) = adapter.request_device(
+        &wgpu::DeviceDescriptor {
+            required_features: wgpu::Features::empty(),
+            required_limits: adapter.limits(),
+            label: None,
+            memory_hints: wgpu::MemoryHints::Performance,
+            ..Default::default()
+        }
+    ).await.map_err(|e| e.to_string())?;
+
+    let caps = surface.get_capabilities(&adapter);
+    let format = caps.formats.iter().copied().find(|f| !f.is_srgb()).unwrap_or(caps.formats[0]);
+    
+    let config = wgpu::SurfaceConfiguration {
+        usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+        format,
+        width,
+        height,
+        present_mode: wgpu::PresentMode::Fifo,
+        alpha_mode: wgpu::CompositeAlphaMode::Auto,
+        view_formats: vec![],
+        desired_maximum_frame_latency: 2,
+    };
+
+    surface.configure(&device, &config);
+
+    let renderer = WgpuRenderer::new(
+        device,
+        queue,
+        model,
+        format,
+        width,
+        height,
+        surface,
+        config,
+    )?;
+    Ok(renderer)
+    
+}
+
+pub fn from_winit_window(window: &winit::window::Window, model: &Model) -> Result<WgpuRenderer> {
+    todo!()
+}
