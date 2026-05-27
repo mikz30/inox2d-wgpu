@@ -24,7 +24,9 @@ use crate::buffers::BufferManager;
 use crate::uniforms::{Uniforms, UNIFORM_ALIGNMENT};
 use crate::cmd::{RenderCommand, MaskingMode};
 
+#[cfg(target_arch = "wasm32")]
 use wgpu::web_sys;
+
 use log::info;
 
 pub struct CompositeResources {
@@ -748,6 +750,7 @@ impl WgpuRenderer {
     }
 }
 
+#[cfg(target_arch = "wasm32")]
 pub async fn from_canvas(canvas: &web_sys::HtmlCanvasElement, 
     model: &Model,
     width: Option<u32>, 
