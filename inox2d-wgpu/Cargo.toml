@@ -11,8 +11,8 @@ bytemuck = { version = "1.16", features = ["derive"] }
 thiserror = "1.0"
 log = "0.4"
 memoffset = "0.9"
+winit = "0.29"
 
 [dev-dependencies]
 pollster = "0.3"
-winit = "0.29"
 clap = { version = "4.1.8", features = ["derive"] }

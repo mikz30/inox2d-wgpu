@@ -1,6 +1,7 @@
 # Rust
 /target
 /Cargo.lock
+rust-toolchain.toml
 
 # Inochi2D project/model file
 *.inp
