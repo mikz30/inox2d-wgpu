@@ -5,12 +5,69 @@
   <meta content="text/html;charset=utf-8" http-equiv="Content-Type" />
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta charset="UTF-8" />
-  <title>Inox2D WebGPU Example</title>
+
+  <!-- SEO Metadata -->
+  <title>Inox2D WebGPU Renderer - Real-time 2D Puppet Animation in Rust</title>
+  <meta name="description"
+    content="An experimental, high-performance Rust port of the Inochi2D puppet animation standard, rendering live 2D puppets in the browser using WebGPU." />
+  <meta name="keywords"
+    content="Inox2D, Inochi2D, Rust, WebGPU, WebGL, 2D puppet rendering, animation, live2d, WASM, web-assembly" />
+
+  <!-- Open Graph / Facebook -->
+  <meta property="og:type" content="website" />
+  <meta property="og:title" content="Inox2D WebGPU Renderer - Real-time 2D Puppet Animation" />
+  <meta property="og:description" content="Rendering live 2D puppets in the browser using WebGPU and Rust." />
+  <meta property="og:url" content="https://mikz30.github.io/inox2d-wgpu/" />
+
+  <!-- Twitter -->
+  <meta property="twitter:card" content="summary_large_image" />
+  <meta property="twitter:title" content="Inox2D WebGPU Renderer - Real-time 2D Puppet Animation" />
+  <meta property="twitter:description" content="Rendering live 2D puppets in the browser using WebGPU and Rust." />
+
+  <!-- Schema.org Structured Data -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "SoftwareApplication",
+    "name": "Inox2D WebGPU Renderer",
+    "applicationCategory": "DeveloperApplication",
+    "operatingSystem": "Web",
+    "description": "An experimental, high-performance Rust port of the Inochi2D puppet animation standard, rendering live 2D puppets in the browser using WebGPU.",
+    "softwareVersion": "Experimental",
+    "offers": {
+      "@type": "Offer",
+      "price": "0.00",
+      "priceCurrency": "USD"
+    },
+    "downloadUrl": "https://github.com/mikz30/inox2d-wgpu",
+    "featureList": [
+      "Real-time 2D puppet rendering",
+      "WebGPU and WebGL hardware acceleration",
+      "Compiled to WebAssembly (WASM)",
+      "Port of Inochi2D specifications"
+    ]
+  }
+  </script>
+
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
+
   <link data-trunk rel="rust" data-wasm-opt="z" data-reference-types>
   <link data-trunk rel="copy-dir" href="assets/">
   <script src="https://cdn.jsdelivr.net/npm/eruda"></script>
   <script>eruda.init();</script>
   <style>
+    :root {
+      --bg-glass: rgba(18, 18, 20, 0.85);
+      --border-glass: rgba(255, 255, 255, 0.08);
+      --text-primary: #f3f4f6;
+      --text-secondary: #9ca3af;
+      --accent: #a855f7;
+      --accent-hover: #c084fc;
+    }
+
     html {
       background: #2c2a2e;
       overflow: hidden;
@@ -20,6 +77,8 @@
     body {
       margin: 0;
       height: 100%;
+      font-family: 'Inter', sans-serif;
+      color: var(--text-primary);
     }
 
     body {
@@ -32,10 +91,194 @@
       width: 100%;
       height: 100%;
     }
+
+    /* Floating card layout */
+    .info-panel {
+      position: fixed;
+      top: 24px;
+      left: 24px;
+      width: 340px;
+      max-width: calc(100vw - 48px);
+      background: var(--bg-glass);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border: 1px solid var(--border-glass);
+      border-radius: 16px;
+      padding: 24px;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+      z-index: 100;
+      transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.3s ease;
+      font-size: 14px;
+      line-height: 1.5;
+      box-sizing: border-box;
+      text-align: left;
+    }
+
+    .info-panel.hidden {
+      transform: translateX(-380px);
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    .info-panel h1 {
+      font-size: 20px;
+      font-weight: 700;
+      margin: 0 0 8px 0;
+      background: linear-gradient(135deg, #fff 0%, #a855f7 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      letter-spacing: -0.5px;
+    }
+
+    .info-panel p {
+      color: var(--text-secondary);
+      margin: 0 0 16px 0;
+    }
+
+    .info-panel .meta-section {
+      border-top: 1px solid var(--border-glass);
+      padding-top: 16px;
+      margin-top: 16px;
+    }
+
+    .info-panel h2 {
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--text-primary);
+      margin: 0 0 8px 0;
+      font-weight: 600;
+    }
+
+    .info-panel a {
+      color: var(--accent);
+      text-decoration: none;
+      font-weight: 500;
+      transition: color 0.2s ease;
+    }
+
+    .info-panel a:hover {
+      color: var(--accent-hover);
+      text-decoration: underline;
+    }
+
+    /* Compatibility alert box */
+    .compatibility-warning {
+      background: rgba(245, 158, 11, 0.1);
+      border: 1px solid rgba(245, 158, 11, 0.2);
+      border-radius: 8px;
+      padding: 12px;
+      color: #fcd34d;
+      font-size: 12px;
+      margin-top: 12px;
+    }
+
+    .compatibility-warning strong {
+      color: #fbbf24;
+      display: block;
+      margin-bottom: 4px;
+    }
+
+    /* Toggle trigger button */
+    .panel-toggle {
+      position: fixed;
+      top: 24px;
+      left: 24px;
+      z-index: 99;
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+      background: var(--bg-glass);
+      border: 1px solid var(--border-glass);
+      color: var(--text-primary);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
+      transition: background 0.2s, transform 0.2s;
+    }
+
+    .panel-toggle:hover {
+      background: rgba(255, 255, 255, 0.1);
+      transform: scale(1.05);
+    }
+
+    .info-panel .close-btn {
+      position: absolute;
+      top: 16px;
+      right: 16px;
+      background: transparent;
+      border: none;
+      color: var(--text-secondary);
+      cursor: pointer;
+      font-size: 18px;
+      padding: 4px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: color 0.2s;
+    }
+
+    .info-panel .close-btn:hover {
+      color: var(--text-primary);
+    }
   </style>
 </head>
 
 <body>
-</body>
+  <button id="toggle-info-btn" class="panel-toggle" style="display: none;" title="Show Info" aria-label="Show Info">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+      stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="12" cy="12" r="10"></circle>
+      <line x1="12" y1="16" x2="12" y2="12"></line>
+      <line x1="12" y1="8" x2="12.01" y2="8"></line>
+    </svg>
+  </button>
+
+  <div id="info-panel" class="info-panel">
+    <button id="close-info-btn" class="close-btn" title="Hide Panel" aria-label="Hide Panel">✕</button>
+    <h1>Inox2D WebGPU</h1>
+    <p>
+      An experimental, high-performance Rust port of the
+      <a href="https://github.com/Inochi2D/inochi2d" target="_blank" rel="noopener">Inochi2D</a>
+      puppet animation standard. This page showcases real-time 2D puppet rendering in the browser using WebGPU.
+    </p>
+
+    <div class="meta-section">
+      <h2>Project Source</h2>
+      <p style="margin-bottom: 8px;">
+        View code and run examples from the Git repository:
+      </p>
+      <a href="https://github.com/mikz30/inox2d-wgpu" target="_blank" rel="noopener">
+        github.com/mikz30/inox2d-wgpu
+      </a>
+    </div>
+
+    <div class="compatibility-warning">
+      <strong>Browser Compatibility Note</strong>
+      Older versions of Google Chrome and Apple Safari may experience issues or runtime panics if WebGPU features
+      are missing or experimental flags are disabled. This example doesn't have a fallback to WebGL. For the best
+      experience, please use a modern browser.
+    </div>
+  </div>
+
+  <script>
+    const panel = document.getElementById('info-panel');
+    const closeBtn = document.getElementById('close-info-btn');
+    const toggleBtn = document.getElementById('toggle-info-btn');
+
+    closeBtn.addEventListener('click', () => {
+      panel.classList.add('hidden');
+      toggleBtn.style.display = 'flex';
+    });
+
+    toggleBtn.addEventListener('click', () => {
+      panel.classList.remove('hidden');
+      toggleBtn.style.display = 'none';
+    });
+  </script>
 
 </html>
