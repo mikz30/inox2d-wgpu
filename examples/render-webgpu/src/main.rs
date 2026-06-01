@@ -119,7 +119,10 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
 
             let (mut encoder, view, output) = match renderer.borrow_mut().clear() {
                 Some((encoder, view, output)) => (encoder, view, output),
-                None => return,
+                None => {
+                    let _ = request_animation_frame(&window_loop, anim_loop_f.borrow().as_ref().unwrap());
+                    return;
+                }
             };
 
             let dt = scene_ctrl.borrow().current_elapsed();

@@ -38,6 +38,7 @@ pub struct PipelineManager {
     pub composite_layout: wgpu::BindGroupLayout,
     pub uniform_layout: wgpu::BindGroupLayout,
     shader: wgpu::ShaderModule,
+    composite_shader: wgpu::ShaderModule,
     cache: HashMap<PipelineKey, wgpu::RenderPipeline>,
 }
 
@@ -47,6 +48,11 @@ impl PipelineManager {
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("Inox2D Shader"),
             source: wgpu::ShaderSource::Wgsl(Cow::Borrowed(include_str!("shader.wgsl"))),
+        });
+
+        let composite_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some("Inox2D Composite Shader"),
+            source: wgpu::ShaderSource::Wgsl(Cow::Borrowed(include_str!("composite.wgsl"))),
         });
 
         // 2. Bind Group Layouts
@@ -142,6 +148,7 @@ impl PipelineManager {
             composite_layout,
             uniform_layout,
             shader,
+            composite_shader,
             cache: HashMap::new(),
         }
     }
@@ -287,7 +294,7 @@ impl PipelineManager {
         let (depth_stencil, color_write) = match mask {
             MaskState::None => (
                 Some(wgpu::DepthStencilState {
-                    format: wgpu::TextureFormat::Depth32FloatStencil8,
+                    format: wgpu::TextureFormat::Depth24PlusStencil8,
                     depth_write_enabled: false,
                     depth_compare: wgpu::CompareFunction::Always,
                     stencil: wgpu::StencilState {
@@ -302,7 +309,7 @@ impl PipelineManager {
             ),
             MaskState::WriteMask => (
                 Some(wgpu::DepthStencilState {
-                    format: wgpu::TextureFormat::Depth32FloatStencil8,
+                    format: wgpu::TextureFormat::Depth24PlusStencil8,
                     depth_write_enabled: false,
                     depth_compare: wgpu::CompareFunction::Always,
                     stencil: wgpu::StencilState {
@@ -327,7 +334,7 @@ impl PipelineManager {
             ),
             MaskState::ReadMask(_ref_val) => (
                 Some(wgpu::DepthStencilState {
-                    format: wgpu::TextureFormat::Depth32FloatStencil8,
+                    format: wgpu::TextureFormat::Depth24PlusStencil8,
                     depth_write_enabled: false,
                     depth_compare: wgpu::CompareFunction::Always,
                     stencil: wgpu::StencilState {
@@ -433,7 +440,7 @@ impl PipelineManager {
         let (depth_stencil, color_write) = match mask {
             MaskState::None => (
                 Some(wgpu::DepthStencilState {
-                    format: wgpu::TextureFormat::Depth32FloatStencil8,
+                    format: wgpu::TextureFormat::Depth24PlusStencil8,
                     depth_write_enabled: false,
                     depth_compare: wgpu::CompareFunction::Always,
                     stencil: wgpu::StencilState { front: wgpu::StencilFaceState::IGNORE, back: wgpu::StencilFaceState::IGNORE, read_mask: 0, write_mask: 0 },
@@ -443,7 +450,7 @@ impl PipelineManager {
             ),
             MaskState::WriteMask => (
                 Some(wgpu::DepthStencilState {
-                    format: wgpu::TextureFormat::Depth32FloatStencil8,
+                    format: wgpu::TextureFormat::Depth24PlusStencil8,
                     depth_write_enabled: false,
                     depth_compare: wgpu::CompareFunction::Always,
                     stencil: wgpu::StencilState {
@@ -457,7 +464,7 @@ impl PipelineManager {
             ),
             MaskState::ReadMask(_ref_val) => (
                 Some(wgpu::DepthStencilState {
-                    format: wgpu::TextureFormat::Depth32FloatStencil8,
+                    format: wgpu::TextureFormat::Depth24PlusStencil8,
                     depth_write_enabled: false,
                     depth_compare: wgpu::CompareFunction::Always,
                     stencil: wgpu::StencilState {
@@ -475,13 +482,13 @@ impl PipelineManager {
             label: Some(&format!("Inox Composite Pipeline {:?} {:?}", get_blend_id(blend), mask)),
             layout: Some(&layout),
             vertex: wgpu::VertexState {
-                module: &self.shader,
+                module: &self.composite_shader,
                 entry_point: Some("vs_composite"),
                 compilation_options: Default::default(),
                 buffers: &[Vertex::desc()],
             },
             fragment: Some(wgpu::FragmentState {
-                module: &self.shader,
+                module: &self.composite_shader,
                 entry_point: Some("fs_composite"),
                 compilation_options: Default::default(),
                 targets: &[Some(wgpu::ColorTargetState { format, blend: blend_state, write_mask: color_write })],
