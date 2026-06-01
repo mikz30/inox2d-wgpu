@@ -75,8 +75,9 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
     canvas.set_width(width);
     canvas.set_height(height);
 
-
-    let res = reqwest::Client::new().get(format!("{}/assets/puppet.inp", base_url())).send().await.map_err(|e| e.to_string())?;
+    let base_path = if pathname.ends_with('/') { &pathname } else { "/" };
+	let asset_url = format!("{}{}/assets/puppet.inp", origin, base_path);
+    let res = reqwest::Client::new().get(&asset_url).send().await.map_err(|e| e.to_string())?;
     let model_bytes = res.bytes().await.map_err(|e| e.to_string())?;
 
     let mut model = parse_inp(model_bytes.as_ref()).map_err(|e| e.to_string())?;
