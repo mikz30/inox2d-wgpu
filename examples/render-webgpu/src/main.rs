@@ -74,7 +74,13 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
 	info!("canvas height and width {:?}", [height, width]);
     canvas.set_width(width);
     canvas.set_height(height);
-
+    
+	// 1. Get the current browser window location
+	let location = web_sys::window().ok_or("No window found")?.location();
+	let origin = location.origin().map_err(|_| "Could not get origin")?;   // e.g., "https://mikz30.github.io"
+	let pathname = location.pathname().map_err(|_| "Could not get path")?; // e.g., "/inox2d-wgpu/"
+	
+	// 2. Safely reconstruct the absolute URL depending on whether it's local or production
     let base_path = if pathname.ends_with('/') { &pathname } else { "/" };
 	let asset_url = format!("{}{}/assets/puppet.inp", origin, base_path);
     let res = reqwest::Client::new().get(&asset_url).send().await.map_err(|e| e.to_string())?;
