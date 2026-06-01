@@ -38,7 +38,7 @@ pub struct PipelineManager {
     pub composite_layout: wgpu::BindGroupLayout,
     pub uniform_layout: wgpu::BindGroupLayout,
     shader: wgpu::ShaderModule,
-    composite_shader: wgpu::ShaderModule,
+    // composite_shader: wgpu::ShaderModule,
     cache: HashMap<PipelineKey, wgpu::RenderPipeline>,
 }
 
@@ -50,10 +50,10 @@ impl PipelineManager {
             source: wgpu::ShaderSource::Wgsl(Cow::Borrowed(include_str!("shader.wgsl"))),
         });
 
-        let composite_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some("Inox2D Composite Shader"),
-            source: wgpu::ShaderSource::Wgsl(Cow::Borrowed(include_str!("composite.wgsl"))),
-        });
+        // let composite_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+        //     label: Some("Inox2D Composite Shader"),
+        //     source: wgpu::ShaderSource::Wgsl(Cow::Borrowed(include_str!("composite.wgsl"))),
+        // });
 
         // 2. Bind Group Layouts
         // Group 0: Texture (View + Sampler)
@@ -148,7 +148,7 @@ impl PipelineManager {
             composite_layout,
             uniform_layout,
             shader,
-            composite_shader,
+            // composite_shader,
             cache: HashMap::new(),
         }
     }
@@ -482,13 +482,13 @@ impl PipelineManager {
             label: Some(&format!("Inox Composite Pipeline {:?} {:?}", get_blend_id(blend), mask)),
             layout: Some(&layout),
             vertex: wgpu::VertexState {
-                module: &self.composite_shader,
+                module: &self.shader, // &self.composite_shader,
                 entry_point: Some("vs_composite"),
                 compilation_options: Default::default(),
                 buffers: &[Vertex::desc()],
             },
             fragment: Some(wgpu::FragmentState {
-                module: &self.composite_shader,
+                module: &self.shader, // &self.composite_shader,
                 entry_point: Some("fs_composite"),
                 compilation_options: Default::default(),
                 targets: &[Some(wgpu::ColorTargetState { format, blend: blend_state, write_mask: color_write })],
