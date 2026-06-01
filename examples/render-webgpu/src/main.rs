@@ -74,7 +74,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
 	info!("canvas height and width {:?}", [height, width]);
     canvas.set_width(width);
     canvas.set_height(height);
-    
+
 	// 1. Get the current browser window location
 	let location = web_sys::window().ok_or("No window found")?.location();
 	let origin = location.origin().map_err(|_| "Could not get origin")?;   // e.g., "https://mikz30.github.io"
@@ -117,34 +117,6 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
 
             scene_ctrl.borrow_mut().update(&mut renderer.borrow_mut().camera);
 
-            // let current_texture = surface.borrow().get_current_texture();
-            // let output = match current_texture {
-            //     Ok(output) => output,
-            //     Err(_) => return,
-            // };
-            // let view = output.texture.create_view(&wgpu::TextureViewDescriptor::default());
-            // let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("Render Encoder") });
-
-            // // Clear pass (color and depth/stencil)
-            // {
-            //     let _ = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-            //         label: Some("Clear Pass"),
-            //         color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-            //             view: &view,
-            //             resolve_target: None,
-            //             ops: wgpu::Operations { load: wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT), store: wgpu::StoreOp::Store },
-            //             depth_slice: None,
-            //         })],
-            //         depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
-            //             view: &depth_view.borrow(),
-            //             depth_ops: Some(wgpu::Operations { load: wgpu::LoadOp::Clear(1.0), store: wgpu::StoreOp::Store }),
-            //             stencil_ops: Some(wgpu::Operations { load: wgpu::LoadOp::Clear(0), store: wgpu::StoreOp::Store }),
-            //         }),
-            //         timestamp_writes: None,
-            //         occlusion_query_set: None,
-            //         multiview_mask: None,
-            //     });
-            // }
             let (mut encoder, view, output) = match renderer.borrow_mut().clear() {
                 Some((encoder, view, output)) => (encoder, view, output),
                 None => return,

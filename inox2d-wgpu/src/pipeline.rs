@@ -287,7 +287,7 @@ impl PipelineManager {
         let (depth_stencil, color_write) = match mask {
             MaskState::None => (
                 Some(wgpu::DepthStencilState {
-                    format: wgpu::TextureFormat::Depth24PlusStencil8,
+                    format: wgpu::TextureFormat::Depth32FloatStencil8,
                     depth_write_enabled: false,
                     depth_compare: wgpu::CompareFunction::Always,
                     stencil: wgpu::StencilState {
@@ -302,7 +302,7 @@ impl PipelineManager {
             ),
             MaskState::WriteMask => (
                 Some(wgpu::DepthStencilState {
-                    format: wgpu::TextureFormat::Depth24PlusStencil8,
+                    format: wgpu::TextureFormat::Depth32FloatStencil8,
                     depth_write_enabled: false,
                     depth_compare: wgpu::CompareFunction::Always,
                     stencil: wgpu::StencilState {
@@ -327,7 +327,7 @@ impl PipelineManager {
             ),
             MaskState::ReadMask(_ref_val) => (
                 Some(wgpu::DepthStencilState {
-                    format: wgpu::TextureFormat::Depth24PlusStencil8,
+                    format: wgpu::TextureFormat::Depth32FloatStencil8,
                     depth_write_enabled: false,
                     depth_compare: wgpu::CompareFunction::Always,
                     stencil: wgpu::StencilState {
@@ -433,7 +433,7 @@ impl PipelineManager {
         let (depth_stencil, color_write) = match mask {
             MaskState::None => (
                 Some(wgpu::DepthStencilState {
-                    format: wgpu::TextureFormat::Depth24PlusStencil8,
+                    format: wgpu::TextureFormat::Depth32FloatStencil8,
                     depth_write_enabled: false,
                     depth_compare: wgpu::CompareFunction::Always,
                     stencil: wgpu::StencilState { front: wgpu::StencilFaceState::IGNORE, back: wgpu::StencilFaceState::IGNORE, read_mask: 0, write_mask: 0 },
@@ -443,7 +443,7 @@ impl PipelineManager {
             ),
             MaskState::WriteMask => (
                 Some(wgpu::DepthStencilState {
-                    format: wgpu::TextureFormat::Depth24PlusStencil8,
+                    format: wgpu::TextureFormat::Depth32FloatStencil8,
                     depth_write_enabled: false,
                     depth_compare: wgpu::CompareFunction::Always,
                     stencil: wgpu::StencilState {
@@ -457,7 +457,7 @@ impl PipelineManager {
             ),
             MaskState::ReadMask(_ref_val) => (
                 Some(wgpu::DepthStencilState {
-                    format: wgpu::TextureFormat::Depth24PlusStencil8,
+                    format: wgpu::TextureFormat::Depth32FloatStencil8,
                     depth_write_enabled: false,
                     depth_compare: wgpu::CompareFunction::Always,
                     stencil: wgpu::StencilState {
