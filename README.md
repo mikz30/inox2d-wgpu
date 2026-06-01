@@ -13,6 +13,9 @@ Officially supported experimental Rust port of [Inochi2D](https://github.com/Ino
   </div>
 </p>
 
+> [!NOTE]
+> This repository is a fork of Inox2D containing experimental enhancements, including WebGPU rendering capabilities. For the official upstream repository and releases, please visit [Inochi2D/inox2d](https://github.com/Inochi2D/inochi2d).
+
 &nbsp;
 
 The Inox2D workgroup provides support in the **#inox2d** channel on the [Inochi2D Discord][discord-invite].
@@ -74,13 +77,19 @@ cargo run -p render-opengl path/to/puppet.inp
 
 ### WebGL demo
 
-See the [`render_webgl`](/examples/render_webgl) example.
+See the [`render-webgl`](./examples/render-webgl) example.
 
 ![WebGL-rendered Aka](https://fs.speykious.dev/inox2d/inox2d-webgl-foxgirl.png)
 
 ### WebGPU demo
 
-Also see the [`render_webgl`](/examples/render_webgl) example. They build and run the same way.
+See the [`render-webgpu`](./examples/render-webgpu) example.
+
+### Browser Compatibility Note
+
+This implementation utilizes WebGL and WebGPU APIs for rendering.
+* **Modern Browsers**: Recent versions of Google Chrome, Microsoft Edge, and Apple Safari fully support or have flags to enable WebGPU.
+* **Older Browsers**: Older versions of Google Chrome and Apple Safari might support rendering APIs but can experience runtime panics (e.g., during WebGPU adapter or WebGL context creation) if features are incomplete or unavailable.
 
 ## Implementation
 
