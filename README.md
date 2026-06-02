@@ -14,7 +14,7 @@ Officially supported experimental Rust port of [Inochi2D](https://github.com/Ino
 </p>
 
 > [!NOTE]
-> This repository is a fork of Inox2D containing experimental enhancements, including WebGPU rendering capabilities. For the official upstream repository and releases, please visit [Inochi2D/inox2d](https://github.com/Inochi2D/inochi2d).
+> This repository is a fork of Inox2D containing experimental enhancements, including WebGPU rendering capabilities, for personal reasearch purpose. For the official upstream repository and releases, please visit [Inochi2D/inox2d](https://github.com/Inochi2D/inochi2d).
 
 &nbsp;
 
