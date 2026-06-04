@@ -9,3 +9,6 @@ rust-toolchain.toml
 
 # renderdoc capture file
 *.cap
+
+*.md
+!README.md
