@@ -2,19 +2,12 @@ use crate::vertex::Vertex;
 use inox2d::node::components::BlendMode;
 use std::borrow::Cow;
 use std::collections::HashMap;
-
-// Helper enum to define Masking State
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum MaskState {
-	None,
-	WriteMask,    // Drawing into the Stencil Buffer
-	ReadMask(u8), // Drawing content, comparing against Stencil Ref
-}
+use crate::cmd::MaskingMode;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 struct PipelineKey {
 	blend_id: u8, // BlendMode -> u8 to for eq and hash traits
-	mask: MaskState,
+	masking_mode: MaskingMode,
 	format: wgpu::TextureFormat, // Render Target Format
 	is_composite: bool,
 }
@@ -165,12 +158,12 @@ impl PipelineManager {
 		device: &wgpu::Device,
 		surface_format: wgpu::TextureFormat,
 		blend_mode: BlendMode,
-		mask: MaskState,
+		mask: MaskingMode, 
 	) -> &wgpu::RenderPipeline {
 		// Use the ID for the cache key
 		let key = PipelineKey {
 			blend_id: Self::get_blend_id(blend_mode),
-			mask,
+			masking_mode: mask,
 			format: surface_format,
 			is_composite: false,
 		};
@@ -189,11 +182,11 @@ impl PipelineManager {
 		device: &wgpu::Device,
 		surface_format: wgpu::TextureFormat,
 		blend_mode: BlendMode,
-		mask: MaskState,
+		mask: MaskingMode,
 	) -> &wgpu::RenderPipeline {
 		let key = PipelineKey {
 			blend_id: Self::get_blend_id(blend_mode),
-			mask,
+			masking_mode: mask,
 			format: surface_format,
 			is_composite: true,
 		};
@@ -211,7 +204,7 @@ impl PipelineManager {
 		device: &wgpu::Device,
 		format: wgpu::TextureFormat,
 		blend_mode: BlendMode,
-		mask_state: MaskState,
+		masking_mode: MaskingMode,
 	) -> wgpu::RenderPipeline {
 		let layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
 			label: Some("Inox2D Pipeline Layout"),
@@ -223,14 +216,14 @@ impl PipelineManager {
 		// The shader outputs Premultiplied Alpha, so we use PREMULTIPLIED settings for Normal
 		let blend_state = Self::get_blend_state(blend_mode);
 
-		// Map MaskState to DepthStencil
-		let (depth_stencil, color_write) = Self::get_depth_stencil(mask_state);
+		// Map MaskingMode to DepthStencil
+		let (depth_stencil, color_write) = Self::get_depth_stencil(masking_mode);
 
 		device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
 			label: Some(&format!(
-				"Inox2D Pipeline BlendMode:{:?} MaskState:{:?}",
+				"Inox2D Pipeline BlendMode:{:?} MaskingMode:{:?}",
 				Self::get_blend_id(blend_mode),
-				mask_state
+				masking_mode
 			)),
 			layout: Some(&layout),
 			vertex: wgpu::VertexState {
@@ -270,7 +263,7 @@ impl PipelineManager {
 		device: &wgpu::Device,
 		format: wgpu::TextureFormat,
 		blend_mode: BlendMode,
-		mask_state: MaskState,
+		mask_state: MaskingMode,
 	) -> wgpu::RenderPipeline {
 		let layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
 			label: Some("Inox2D Composite Pipeline Layout"),
@@ -284,7 +277,7 @@ impl PipelineManager {
 
 		device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
 			label: Some(&format!(
-				"Inox2D Composite Pipeline BlendMode:{:?} MaskState:{:?}",
+				"Inox2D Composite Pipeline BlendMode:{:?} MaskingMode:{:?}",
 				Self::get_blend_id(blend_mode),
 				mask_state
 			)),
@@ -414,9 +407,9 @@ impl PipelineManager {
 		blend_state
 	}
 
-	fn get_depth_stencil(mask: MaskState) -> (Option<wgpu::DepthStencilState>, wgpu::ColorWrites) {
+	fn get_depth_stencil(mask: MaskingMode) -> (Option<wgpu::DepthStencilState>, wgpu::ColorWrites) {
 		match mask {
-			MaskState::None => {
+			MaskingMode::NoMask => {
 				return (
 					Some(wgpu::DepthStencilState {
 						format: wgpu::TextureFormat::Depth24PlusStencil8,
@@ -433,7 +426,7 @@ impl PipelineManager {
 					wgpu::ColorWrites::ALL,
 				)
 			}
-			MaskState::WriteMask => {
+			MaskingMode::WriteMask(_) => {
 				return (
 					Some(wgpu::DepthStencilState {
 						format: wgpu::TextureFormat::Depth24PlusStencil8,
@@ -460,7 +453,7 @@ impl PipelineManager {
 					wgpu::ColorWrites::empty(), // Mask doesn't draw color
 				);
 			}
-			MaskState::ReadMask(_ref_val) => {
+			MaskingMode::ReadMask(_) => {
 				return (
 					Some(wgpu::DepthStencilState {
 						format: wgpu::TextureFormat::Depth24PlusStencil8,

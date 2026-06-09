@@ -19,7 +19,7 @@ use std::cell::RefCell;
 use crate::buffers::BufferManager;
 use crate::cmd::{MaskingMode, RenderCommand};
 use crate::error::Result;
-use crate::pipeline::{MaskState, PipelineManager};
+use crate::pipeline::PipelineManager;
 use crate::texture::{TextureManager, DEPTH_FORMAT};
 use crate::uniforms::{Uniforms, UNIFORM_ALIGNMENT};
 
@@ -344,7 +344,7 @@ impl WgpuRenderer {
 		let len = commands.len();
 
 		// Optimization: Track redundant state changes
-		let mut last_pipeline_key: Option<(BlendMode, MaskState)>;
+		let mut last_pipeline_key: Option<(BlendMode, MaskingMode)>;
 		let mut last_texture_index: Option<usize>;
 
 		while i < len {
@@ -412,25 +412,18 @@ impl WgpuRenderer {
 							blend_mode,
 							..
 						} => {
-							let mask_state = match current_mask_mode {
-								MaskingMode::NoMask => MaskState::None,
-								MaskingMode::WriteMask(_) => MaskState::WriteMask,
-								MaskingMode::ReadMask(_) => MaskState::ReadMask(1),
-							};
-
 							self.set_active_pipeline(
 								&mut pass,
 								&mut pipelines,
 								&mut last_pipeline_key,
 								self.surface_format,
 								*blend_mode,
-								mask_state,
+								current_mask_mode
 							);
 
 							self.set_texture_bind_group(&mut pass, &mut last_texture_index, texture_index);
-
 							self.set_uniform_bind_group(&mut pass, dynamic_uniform_offset);
-							// pass.set_bind_group(1, &self.uniform_bind_group, &[dynamic_uniform_offset]);
+
 							pass.draw_indexed(*index_offset..(*index_offset + *index_count), 0, 0..1);
 
 							dynamic_uniform_offset += UNIFORM_ALIGNMENT as u32;
@@ -490,7 +483,7 @@ impl WgpuRenderer {
 								&self.device,
 								self.surface_format,
 								*blend_mode,
-								MaskState::None,
+								MaskingMode::NoMask,
 							);
 							pass.set_pipeline(pipeline);
 
@@ -524,24 +517,17 @@ impl WgpuRenderer {
 							index_count,
 							blend_mode,
 							..
-						} => {
-							let mask_state = match current_mask_mode {
-								MaskingMode::NoMask => MaskState::None,
-								MaskingMode::WriteMask(_) => MaskState::WriteMask,
-								MaskingMode::ReadMask(_) => MaskState::ReadMask(1),
-							};
-
+						} => {							
 							self.set_active_pipeline(
 								&mut pass,
 								&mut pipelines,
 								&mut last_pipeline_key,
 								self.surface_format,
 								*blend_mode,
-								mask_state,
+								current_mask_mode,
 							);
 
 							self.set_texture_bind_group(&mut pass, &mut last_texture_index, texture_index);
-
 							self.set_uniform_bind_group(&mut pass, dynamic_uniform_offset);
 
 							pass.draw_indexed(*index_offset..(*index_offset + *index_count), 0, 0..1);
@@ -632,10 +618,10 @@ impl WgpuRenderer {
 		&self,
 		pass: &mut wgpu::RenderPass,
 		pipelines: &mut std::cell::RefMut<'_, PipelineManager>,
-		last_pipeline_key: &mut Option<(BlendMode, MaskState)>,
+		last_pipeline_key: &mut Option<(BlendMode, MaskingMode)>,
 		surface_format: wgpu::TextureFormat,
 		blend_mode: BlendMode,
-		mask_state: MaskState,
+		mask_state: MaskingMode,
 	) {
 		let current_key = (blend_mode, mask_state);
 		if *last_pipeline_key != Some(current_key) {

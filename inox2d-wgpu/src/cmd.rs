@@ -1,7 +1,7 @@
 use crate::uniforms::Uniforms;
 use inox2d::node::components::BlendMode;
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum MaskingMode {
 	NoMask,
 	WriteMask(u8), // We are currently drawing into the stencil buffer (with ref value)
