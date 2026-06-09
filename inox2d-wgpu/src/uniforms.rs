@@ -8,7 +8,7 @@ pub struct Uniforms {
 	pub screen_color: [f32; 4], // 16 bytes
 	pub offset: [f32; 2],       // 8 bytes
 	pub emission_strength: f32, // 4 bytes
-	pub alpha_threshold: f32,   // 4 bytes (Align to 16 bytes)
+	pub alpha_threshold: f32,   // 4 bytes
 }
 
 #[repr(C)]

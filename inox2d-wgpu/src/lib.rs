@@ -20,7 +20,7 @@ use crate::buffers::BufferManager;
 use crate::cmd::{MaskingMode, RenderCommand};
 use crate::error::Result;
 use crate::pipeline::{MaskState, PipelineManager};
-use crate::texture::TextureManager;
+use crate::texture::{TextureManager, DEPTH_FORMAT};
 use crate::uniforms::{Uniforms, UNIFORM_ALIGNMENT};
 
 #[cfg(target_arch = "wasm32")]
@@ -37,7 +37,13 @@ pub struct CompositeResources {
 }
 
 impl CompositeResources {
-	pub fn new(device: &wgpu::Device, layout: &wgpu::BindGroupLayout, width: u32, height: u32) -> Self {
+	pub fn new(
+		device: &wgpu::Device,
+		layout: &wgpu::BindGroupLayout,
+		format: wgpu::TextureFormat,
+		width: u32,
+		height: u32,
+	) -> Self {
 		let size = wgpu::Extent3d {
 			width,
 			height,
@@ -51,15 +57,15 @@ impl CompositeResources {
 				mip_level_count: 1,
 				sample_count: 1,
 				dimension: wgpu::TextureDimension::D2,
-				format,
+				format, 
 				usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
 				view_formats: &[],
 			})
 		};
 
-		let t_albedo = create_tex("Inox2D Composite Albedo", wgpu::TextureFormat::Rgba8Unorm);
-		let t_emissive = create_tex("Inox2D Composite Emissive", wgpu::TextureFormat::Rgba8Unorm);
-		let t_bump = create_tex("Inox2D Composite Bump", wgpu::TextureFormat::Rgba8Unorm);
+		let t_albedo = create_tex("Inox2D Composite Albedo", format); //wgpu::TextureFormat::Rgba8Unorm);
+		let t_emissive = create_tex("Inox2D Composite Emissive", format); //wgpu::TextureFormat::Rgba8Unorm);
+		let t_bump = create_tex("Inox2D Composite Bump", format); //wgpu::TextureFormat::Rgba8Unorm);
 
 		let t_depth = device.create_texture(&wgpu::TextureDescriptor {
 			label: Some("Inox2D Composite Depth"),
@@ -67,7 +73,7 @@ impl CompositeResources {
 			mip_level_count: 1,
 			sample_count: 1,
 			dimension: wgpu::TextureDimension::D2,
-			format: wgpu::TextureFormat::Depth24PlusStencil8,
+			format: DEPTH_FORMAT,
 			usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
 			view_formats: &[],
 		});
@@ -122,21 +128,18 @@ pub struct WgpuRenderer {
 	pub device: wgpu::Device,
 	pub queue: wgpu::Queue,
 
-	// Managers
 	pub pipelines: RefCell<PipelineManager>,
 	pub textures: TextureManager,
 	pub buffers: BufferManager,
 	pub camera: Camera,
 	composite_resources: Option<CompositeResources>,
 
-	// Uniforms
 	uniform_buffer: wgpu::Buffer,
 	uniform_bind_group: wgpu::BindGroup,
 	uniform_capacity: u64,
 	uniform_staging: Vec<u8>,
 
 	// Command Recording
-	// We use RefCell to allow mutation inside the immutable InoxRenderer trait
 	pub command_buffer: RefCell<Vec<RenderCommand>>,
 
 	// State tracking during recording
@@ -166,7 +169,7 @@ impl WgpuRenderer {
 		device: wgpu::Device,
 		queue: wgpu::Queue,
 		model: &Model,
-		format: wgpu::TextureFormat,
+		surface_format: wgpu::TextureFormat,
 		width: u32,
 		height: u32,
 		surface: wgpu::Surface<'static>,
@@ -208,7 +211,7 @@ impl WgpuRenderer {
 			mip_level_count: 1,
 			sample_count: 1,
 			dimension: wgpu::TextureDimension::D2,
-			format: wgpu::TextureFormat::Depth24PlusStencil8,
+			format: DEPTH_FORMAT,
 			usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
 			view_formats: &[],
 		});
@@ -233,7 +236,7 @@ impl WgpuRenderer {
 			mask_counter: RefCell::new(0),
 			viewport_width: width,
 			viewport_height: height,
-			surface_format: format,
+			surface_format,
 			surface,
 			surface_config,
 			depth_texture,
@@ -250,9 +253,8 @@ impl WgpuRenderer {
 		*self.mask_counter.borrow_mut() = 0;
 	}
 
-	// 1. HELPER: Upload Uniforms
 	// Call this AFTER recording commands via puppet.draw(), but BEFORE creating the RenderPass
-	pub fn write_uniforms(&mut self) {
+	fn write_uniforms(&mut self) {
 		let cmds = self.command_buffer.borrow();
 		if cmds.is_empty() {
 			return;
@@ -317,7 +319,7 @@ impl WgpuRenderer {
 	}
 
 	/// The function you will call in the render loop to execute the recorded commands.
-	pub fn render(&mut self, encoder: &mut wgpu::CommandEncoder, target_view: &wgpu::TextureView) {
+	fn render(&mut self, encoder: &mut wgpu::CommandEncoder, target_view: &wgpu::TextureView) {
 		let mut pipelines = self.pipelines.borrow_mut();
 		let commands = self.command_buffer.borrow();
 
@@ -329,6 +331,7 @@ impl WgpuRenderer {
 			self.composite_resources = Some(CompositeResources::new(
 				&self.device,
 				&pipelines.composite_layout,
+				self.surface_format,
 				self.viewport_width,
 				self.viewport_height,
 			));
@@ -415,28 +418,19 @@ impl WgpuRenderer {
 								MaskingMode::ReadMask(_) => MaskState::ReadMask(1),
 							};
 
-							// Check redundancy for Pipeline
-							let current_key = (*blend_mode, mask_state);
-							if last_pipeline_key != Some(current_key) {
-								let pipeline = pipelines.get_pipeline(
-									&self.device,
-									wgpu::TextureFormat::Rgba8Unorm,
-									*blend_mode,
-									mask_state,
-								);
-								pass.set_pipeline(pipeline);
-								last_pipeline_key = Some(current_key);
-							}
+							self.set_active_pipeline(
+								&mut pass,
+								&mut pipelines,
+								&mut last_pipeline_key,
+								self.surface_format,
+								*blend_mode,
+								mask_state,
+							);
 
-							// Check redundancy for Bind Group 0 (Texture)
-							if last_texture_index != Some(*texture_index) {
-								if let Some(bg) = self.textures.get_bind_group(*texture_index) {
-									pass.set_bind_group(0, bg, &[]);
-								}
-								last_texture_index = Some(*texture_index);
-							}
+							self.set_texture_bind_group(&mut pass, &mut last_texture_index, texture_index);
 
-							pass.set_bind_group(1, &self.uniform_bind_group, &[dynamic_uniform_offset]);
+							self.set_uniform_bind_group(&mut pass, dynamic_uniform_offset);
+							// pass.set_bind_group(1, &self.uniform_bind_group, &[dynamic_uniform_offset]);
 							pass.draw_indexed(*index_offset..(*index_offset + *index_count), 0, 0..1);
 
 							dynamic_uniform_offset += UNIFORM_ALIGNMENT as u32;
@@ -486,7 +480,6 @@ impl WgpuRenderer {
 						RenderCommand::BeginComposite => break, // Switch to Composite Pass
 
 						RenderCommand::EndComposite {
-							// vertex_offset: _,
 							index_offset,
 							index_count,
 							blend_mode,
@@ -538,24 +531,19 @@ impl WgpuRenderer {
 								MaskingMode::ReadMask(_) => MaskState::ReadMask(1),
 							};
 
-							// Check Redundancy: Pipeline
-							let current_key = (*blend_mode, mask_state);
-							if last_pipeline_key != Some(current_key) {
-								let pipeline =
-									pipelines.get_pipeline(&self.device, self.surface_format, *blend_mode, mask_state);
-								pass.set_pipeline(pipeline);
-								last_pipeline_key = Some(current_key);
-							}
+							self.set_active_pipeline(
+								&mut pass,
+								&mut pipelines,
+								&mut last_pipeline_key,
+								self.surface_format,
+								*blend_mode,
+								mask_state,
+							);
 
-							// Check Redundancy: Texture Bind Group
-							if last_texture_index != Some(*texture_index) {
-								if let Some(bg) = self.textures.get_bind_group(*texture_index) {
-									pass.set_bind_group(0, bg, &[]);
-								}
-								last_texture_index = Some(*texture_index);
-							}
+							self.set_texture_bind_group(&mut pass, &mut last_texture_index, texture_index);
 
-							pass.set_bind_group(1, &self.uniform_bind_group, &[dynamic_uniform_offset]);
+							self.set_uniform_bind_group(&mut pass, dynamic_uniform_offset);
+
 							pass.draw_indexed(*index_offset..(*index_offset + *index_count), 0, 0..1);
 
 							dynamic_uniform_offset += UNIFORM_ALIGNMENT as u32;
@@ -638,6 +626,41 @@ impl WgpuRenderer {
 			});
 		}
 		Some((encoder, view, output))
+	}
+
+	fn set_active_pipeline(
+		&self,
+		pass: &mut wgpu::RenderPass,
+		pipelines: &mut std::cell::RefMut<'_, PipelineManager>,
+		last_pipeline_key: &mut Option<(BlendMode, MaskState)>,
+		surface_format: wgpu::TextureFormat,
+		blend_mode: BlendMode,
+		mask_state: MaskState,
+	) {
+		let current_key = (blend_mode, mask_state);
+		if *last_pipeline_key != Some(current_key) {
+			let pipeline = pipelines.get_pipeline(&self.device, surface_format, blend_mode, mask_state);
+			pass.set_pipeline(pipeline);
+			*last_pipeline_key = Some(current_key);
+		}
+	}
+
+	fn set_texture_bind_group(
+		&self,
+		pass: &mut wgpu::RenderPass,
+		last_texture_index: &mut Option<usize>,
+		texture_index: &usize,
+	) {
+		if *last_texture_index != Some(*texture_index) {
+			if let Some(bg) = self.textures.get_bind_group(*texture_index) {
+				pass.set_bind_group(0, bg, &[]);
+			}
+			*last_texture_index = Some(*texture_index);
+		}
+	}
+
+	fn set_uniform_bind_group(&self, pass: &mut wgpu::RenderPass, offset: u32) {
+		pass.set_bind_group(1, &self.uniform_bind_group, &[offset]);
 	}
 }
 
@@ -840,7 +863,7 @@ pub async fn from_canvas(
 	model: &Model,
 	width: Option<u32>,
 	height: Option<u32>,
-) -> Result<WgpuRenderer> {	
+) -> Result<WgpuRenderer> {
 	use log::info;
 	let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
 		backends: wgpu::Backends::all(),

@@ -9,6 +9,8 @@ pub struct Texture {
 	pub bind_group: wgpu::BindGroup,
 }
 
+pub const DEPTH_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Depth24PlusStencil8;
+
 /// Manages the lifecycle and binding of textures for an Inochi2D model.
 pub struct TextureManager {
 	pub textures: Vec<Texture>,
@@ -37,13 +39,32 @@ impl TextureManager {
 				wgpu::BindGroupLayoutEntry {
 					binding: 1,
 					visibility: wgpu::ShaderStages::FRAGMENT,
+					ty: wgpu::BindingType::Texture {
+						multisampled: false,
+						view_dimension: wgpu::TextureViewDimension::D2,
+						sample_type: wgpu::TextureSampleType::Float { filterable: true },
+					},
+					count: None,
+				},
+				wgpu::BindGroupLayoutEntry {
+					binding: 2,
+					visibility: wgpu::ShaderStages::FRAGMENT,
+					ty: wgpu::BindingType::Texture {
+						multisampled: false,
+						view_dimension: wgpu::TextureViewDimension::D2,
+						sample_type: wgpu::TextureSampleType::Float { filterable: true },
+					},
+					count: None,
+				},
+				wgpu::BindGroupLayoutEntry {
+					binding: 3,
+					visibility: wgpu::ShaderStages::FRAGMENT,
 					ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
 					count: None,
 				},
 			],
 		});
 
-		// Decode textures in parallel (if supported by inox2d implementation) or sequentially.
 		let shallow_textures = decode_model_textures(model.textures.iter());
 		let mut textures = Vec::with_capacity(shallow_textures.len());
 
@@ -56,22 +77,22 @@ impl TextureManager {
 				depth_or_array_layers: 1,
 			};
 
-			// Create the texture resource on the GPU.
-			let texture = device.create_texture(&wgpu::TextureDescriptor {
-				label: Some(&format!("Inox2D Texture #{}", i)),
-				size,
-				mip_level_count: 1,
-				sample_count: 1,
-				dimension: wgpu::TextureDimension::D2,
-				format: wgpu::TextureFormat::Rgba8Unorm,
-				usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
-				view_formats: &[],
-			});
+			// Used when texture doesn't have emissive or bump
+			let fallback_size = wgpu::Extent3d {
+				width: 1,
+				height: 1,
+				depth_or_array_layers: 1
+			};
 
-			// Upload texture data.
+			// Create the texture resource on the GPU.
+			let tex_albedo = create_texture(&device, &format!("Inox2D Texture #{} Albedo", i), size);
+			let tex_emissive = create_texture(&device, &format!("Inox2D Texture #{} Emissive", i), fallback_size); // temporary
+			let tex_bump = create_texture(&device, &format!("Inox2D Texture #{} Bump", i), fallback_size); // temporary
+			
+			// Upload texture data (Add emissive and bump after supported).
 			queue.write_texture(
 				wgpu::TexelCopyTextureInfo {
-					texture: &texture,
+					texture: &tex_albedo,
 					mip_level: 0,
 					origin: wgpu::Origin3d::ZERO,
 					aspect: wgpu::TextureAspect::All,
@@ -85,7 +106,9 @@ impl TextureManager {
 				size,
 			);
 
-			let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
+			let view_albedo = tex_albedo.create_view(&wgpu::TextureViewDescriptor::default());
+			let view_emissive = tex_emissive.create_view(&wgpu::TextureViewDescriptor::default());
+			let view_bump = tex_bump.create_view(&wgpu::TextureViewDescriptor::default());
 
 			// Create a sampler with linear filtering and clamp-to-edge wrapping.
 			let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
@@ -106,18 +129,26 @@ impl TextureManager {
 				entries: &[
 					wgpu::BindGroupEntry {
 						binding: 0,
-						resource: wgpu::BindingResource::TextureView(&view),
+						resource: wgpu::BindingResource::TextureView(&view_albedo),
 					},
 					wgpu::BindGroupEntry {
 						binding: 1,
+						resource: wgpu::BindingResource::TextureView(&view_emissive),
+					},
+					wgpu::BindGroupEntry {
+						binding: 2,
+						resource: wgpu::BindingResource::TextureView(&view_bump),
+					},
+					wgpu::BindGroupEntry {
+						binding: 3,
 						resource: wgpu::BindingResource::Sampler(&sampler),
 					},
 				],
 			});
 
 			textures.push(Texture {
-				texture,
-				view,
+				texture: tex_albedo,
+				view: view_albedo,
 				sampler,
 				bind_group,
 			});
@@ -133,4 +164,17 @@ impl TextureManager {
 	pub fn get_bind_group(&self, index: usize) -> Option<&wgpu::BindGroup> {
 		self.textures.get(index).map(|t| &t.bind_group)
 	}
+}
+
+fn create_texture(device: &wgpu::Device, label: &str, size: wgpu::Extent3d) -> wgpu::Texture {
+	device.create_texture(&wgpu::TextureDescriptor {
+		label: Some(label),
+		size,
+		mip_level_count: 1,
+		sample_count: 1,
+		dimension: wgpu::TextureDimension::D2,
+		format: wgpu::TextureFormat::Rgba8Unorm,
+		usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+		view_formats: &[],
+	})
 }

@@ -9,6 +9,12 @@ struct VertexOutput {
     @location(0) uv: vec2<f32>,
 };
 
+struct FragOutput {
+    @location(0) albedo: vec4<f32>,
+    @location(1) emissive: vec4<f32>,
+    @location(2) bump: vec4<f32>,
+}
+
 struct Uniforms {
     mvp: mat4x4<f32>,     
     mult_color: vec4<f32>,    // RGB = Tint, A = Opacity
@@ -19,7 +25,9 @@ struct Uniforms {
 };
 
 @group(0) @binding(0) var t_albedo: texture_2d<f32>;
-@group(0) @binding(1) var s_sampler: sampler;
+@group(0) @binding(1) var t_emissive: texture_2d<f32>;
+@group(0) @binding(2) var t_bump: texture_2d<f32>;
+@group(0) @binding(3) var s_sampler: sampler;
 
 @group(1) @binding(0) var<uniform> data: Uniforms;
 
@@ -40,13 +48,16 @@ fn vs_main(in: VertexInput) -> VertexOutput {
 
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
+    var out: FragOutput;
+
+    // Sample texture
     let tex_color = textureSample(t_albedo, s_sampler, in.uv);
 
     if (tex_color.a < data.alpha_threshold) {
         discard;
     }
 
-    // 1. Screen Color Math (Replicating GLSL exactly)
+    // Screen Color Math 
     // Formula: 1.0 - ((1.0 - tex) * (1.0 - (screen * tex.a)))
     let screen_factor = data.screen_color.rgb * tex_color.a;
     let screen_out = vec3<f32>(1.0) - (
@@ -54,15 +65,20 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         (vec3<f32>(1.0) - screen_factor)
     );
 
-    // 2. Multiply Color Math
+    // Multiply Color Math
     // GLSL: vec4(screenOut, texColor.a) * vec4(multColor, 1)
     let mult_rgb = screen_out * data.mult_color.rgb;
     let final_alpha = tex_color.a; // Note: Inochi GLSL doesn't multiply alpha by mult_color.a here, only at the end
 
-    // 3. Opacity Application (Premultiplication)
+    // Opacity Application (Premultiplication)
     // GLSL: ... * opacity
     let opacity = data.mult_color.a;
-    
-    // Final Result
-    return vec4<f32>(mult_rgb * opacity, final_alpha * opacity);
+
+    out.albedo = vec4<f32>(mult_rgb * opacity, final_alpha * opacity);
+
+    out.emissive = vec4<f32>(textureSample(t_emissive, s_sampler, in.uv).rgb * data.emission_strength, 1) * out.albedo.a;
+    out.bump = vec4<f32>(textureSample(t_bump, s_sampler, in.uv).rgb, 1) * out.albedo.a;
+
+    let final_out = out.albedo;
+    return final_out;
 }

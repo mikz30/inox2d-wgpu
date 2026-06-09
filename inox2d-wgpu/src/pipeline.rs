@@ -41,11 +41,11 @@ impl PipelineManager {
 			source: wgpu::ShaderSource::Wgsl(Cow::Borrowed(include_str!("composite.wgsl"))),
 		});
 
-
 		// TODO: texture layout and composite layout will be the same after adding back the missing components;
 		// 		 Then we will refactor this file entirely
 		// 2. Bind Group Layouts
 		// Group 0: Texture (View + Sampler)
+		// TODO: ENCAPSULATE FOLLOWING
 		let texture_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
 			label: Some("Inox2D Texture Layout"),
 			entries: &[
@@ -61,6 +61,26 @@ impl PipelineManager {
 				},
 				wgpu::BindGroupLayoutEntry {
 					binding: 1,
+					visibility: wgpu::ShaderStages::FRAGMENT,
+					ty: wgpu::BindingType::Texture {
+						multisampled: false,
+						view_dimension: wgpu::TextureViewDimension::D2,
+						sample_type: wgpu::TextureSampleType::Float { filterable: true },
+					},
+					count: None,
+				},
+				wgpu::BindGroupLayoutEntry {
+					binding: 2,
+					visibility: wgpu::ShaderStages::FRAGMENT,
+					ty: wgpu::BindingType::Texture {
+						multisampled: false,
+						view_dimension: wgpu::TextureViewDimension::D2,
+						sample_type: wgpu::TextureSampleType::Float { filterable: true },
+					},
+					count: None,
+				},
+				wgpu::BindGroupLayoutEntry {
+					binding: 3,
 					visibility: wgpu::ShaderStages::FRAGMENT,
 					ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
 					count: None,
@@ -207,7 +227,11 @@ impl PipelineManager {
 		let (depth_stencil, color_write) = Self::get_depth_stencil(mask_state);
 
 		device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-			label: Some(&format!("Inox2D Pipeline BlendMode:{:?} MaskState:{:?}", Self::get_blend_id(blend_mode), mask_state)),
+			label: Some(&format!(
+				"Inox2D Pipeline BlendMode:{:?} MaskState:{:?}",
+				Self::get_blend_id(blend_mode),
+				mask_state
+			)),
 			layout: Some(&layout),
 			vertex: wgpu::VertexState {
 				module: &self.shader,
@@ -257,9 +281,13 @@ impl PipelineManager {
 		let blend_state = Self::get_blend_state(blend_mode);
 
 		let (depth_stencil, color_write) = Self::get_depth_stencil(mask_state);
-		
+
 		device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-			label: Some(&format!("Inox2D Composite Pipeline BlendMode:{:?} MaskState:{:?}", Self::get_blend_id(blend_mode), mask_state)),
+			label: Some(&format!(
+				"Inox2D Composite Pipeline BlendMode:{:?} MaskState:{:?}",
+				Self::get_blend_id(blend_mode),
+				mask_state
+			)),
 			layout: Some(&layout),
 			vertex: wgpu::VertexState {
 				module: &self.composite_shader,
@@ -388,71 +416,77 @@ impl PipelineManager {
 
 	fn get_depth_stencil(mask: MaskState) -> (Option<wgpu::DepthStencilState>, wgpu::ColorWrites) {
 		match mask {
-			MaskState::None => return (
-				Some(wgpu::DepthStencilState {
-					format: wgpu::TextureFormat::Depth24PlusStencil8,
-					depth_write_enabled: false,
-					depth_compare: wgpu::CompareFunction::Always,
-					stencil: wgpu::StencilState {
-						front: wgpu::StencilFaceState::IGNORE,
-						back: wgpu::StencilFaceState::IGNORE,
-						read_mask: 0,
-						write_mask: 0,
-					},
-					bias: wgpu::DepthBiasState::default(),
-				}),
-				wgpu::ColorWrites::ALL,
-			),
-			MaskState::WriteMask => return (
-				Some(wgpu::DepthStencilState {
-					format: wgpu::TextureFormat::Depth24PlusStencil8,
-					depth_write_enabled: false,
-					depth_compare: wgpu::CompareFunction::Always,
-					stencil: wgpu::StencilState {
-						front: wgpu::StencilFaceState {
-							compare: wgpu::CompareFunction::Always,
-							fail_op: wgpu::StencilOperation::Keep,
-							depth_fail_op: wgpu::StencilOperation::Keep,
-							pass_op: wgpu::StencilOperation::Replace, // WRITE Ref
+			MaskState::None => {
+				return (
+					Some(wgpu::DepthStencilState {
+						format: wgpu::TextureFormat::Depth24PlusStencil8,
+						depth_write_enabled: false,
+						depth_compare: wgpu::CompareFunction::Always,
+						stencil: wgpu::StencilState {
+							front: wgpu::StencilFaceState::IGNORE,
+							back: wgpu::StencilFaceState::IGNORE,
+							read_mask: 0,
+							write_mask: 0,
 						},
-						back: wgpu::StencilFaceState {
-							compare: wgpu::CompareFunction::Always,
-							fail_op: wgpu::StencilOperation::Keep,
-							depth_fail_op: wgpu::StencilOperation::Keep,
-							pass_op: wgpu::StencilOperation::Replace, // WRITE Ref
+						bias: wgpu::DepthBiasState::default(),
+					}),
+					wgpu::ColorWrites::ALL,
+				)
+			}
+			MaskState::WriteMask => {
+				return (
+					Some(wgpu::DepthStencilState {
+						format: wgpu::TextureFormat::Depth24PlusStencil8,
+						depth_write_enabled: false,
+						depth_compare: wgpu::CompareFunction::Always,
+						stencil: wgpu::StencilState {
+							front: wgpu::StencilFaceState {
+								compare: wgpu::CompareFunction::Always,
+								fail_op: wgpu::StencilOperation::Keep,
+								depth_fail_op: wgpu::StencilOperation::Keep,
+								pass_op: wgpu::StencilOperation::Replace, // WRITE Ref
+							},
+							back: wgpu::StencilFaceState {
+								compare: wgpu::CompareFunction::Always,
+								fail_op: wgpu::StencilOperation::Keep,
+								depth_fail_op: wgpu::StencilOperation::Keep,
+								pass_op: wgpu::StencilOperation::Replace, // WRITE Ref
+							},
+							read_mask: 0xFF,
+							write_mask: 0xFF,
 						},
-						read_mask: 0xFF,
-						write_mask: 0xFF,
-					},
-					bias: wgpu::DepthBiasState::default(),
-				}),
-				wgpu::ColorWrites::empty(), // Mask doesn't draw color
-			),
-			MaskState::ReadMask(_ref_val) => return (
-				Some(wgpu::DepthStencilState {
-					format: wgpu::TextureFormat::Depth24PlusStencil8,
-					depth_write_enabled: false,
-					depth_compare: wgpu::CompareFunction::Always,
-					stencil: wgpu::StencilState {
-						front: wgpu::StencilFaceState {
-							compare: wgpu::CompareFunction::Equal, // CHECK == REF
-							fail_op: wgpu::StencilOperation::Keep,
-							depth_fail_op: wgpu::StencilOperation::Keep,
-							pass_op: wgpu::StencilOperation::Keep,
+						bias: wgpu::DepthBiasState::default(),
+					}),
+					wgpu::ColorWrites::empty(), // Mask doesn't draw color
+				);
+			}
+			MaskState::ReadMask(_ref_val) => {
+				return (
+					Some(wgpu::DepthStencilState {
+						format: wgpu::TextureFormat::Depth24PlusStencil8,
+						depth_write_enabled: false,
+						depth_compare: wgpu::CompareFunction::Always,
+						stencil: wgpu::StencilState {
+							front: wgpu::StencilFaceState {
+								compare: wgpu::CompareFunction::Equal, // CHECK == REF
+								fail_op: wgpu::StencilOperation::Keep,
+								depth_fail_op: wgpu::StencilOperation::Keep,
+								pass_op: wgpu::StencilOperation::Keep,
+							},
+							back: wgpu::StencilFaceState {
+								compare: wgpu::CompareFunction::Equal, // CHECK == REF
+								fail_op: wgpu::StencilOperation::Keep,
+								depth_fail_op: wgpu::StencilOperation::Keep,
+								pass_op: wgpu::StencilOperation::Keep,
+							},
+							read_mask: 0xFF,
+							write_mask: 0xFF,
 						},
-						back: wgpu::StencilFaceState {
-							compare: wgpu::CompareFunction::Equal, // CHECK == REF
-							fail_op: wgpu::StencilOperation::Keep,
-							depth_fail_op: wgpu::StencilOperation::Keep,
-							pass_op: wgpu::StencilOperation::Keep,
-						},
-						read_mask: 0xFF,
-						write_mask: 0xFF,
-					},
-					bias: wgpu::DepthBiasState::default(),
-				}),
-				wgpu::ColorWrites::ALL,
-			),
+						bias: wgpu::DepthBiasState::default(),
+					}),
+					wgpu::ColorWrites::ALL,
+				);
+			}
 		};
 	}
 }
