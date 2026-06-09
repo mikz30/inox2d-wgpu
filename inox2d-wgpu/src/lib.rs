@@ -560,7 +560,7 @@ impl WgpuRenderer {
 				mip_level_count: 1,
 				sample_count: 1,
 				dimension: wgpu::TextureDimension::D2,
-				format: wgpu::TextureFormat::Depth24PlusStencil8,
+				format: DEPTH_FORMAT,
 				usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
 				view_formats: &[],
 			});
