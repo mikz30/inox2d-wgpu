@@ -386,7 +386,8 @@ impl WgpuRenderer {
 					multiview_mask: None,
 				});
 
-				pass.set_vertex_buffer(0, self.buffers.vertex_buffer.slice(..));
+				pass.set_vertex_buffer(0, self.buffers.vertex_static_buffer.slice(..));
+				pass.set_vertex_buffer(1, self.buffers.vertex_deform_buffer.slice(..));
 				pass.set_index_buffer(self.buffers.index_buffer.slice(..), wgpu::IndexFormat::Uint16);
 
 				while i < len {
@@ -464,7 +465,8 @@ impl WgpuRenderer {
 					multiview_mask: None,
 				});
 
-				pass.set_vertex_buffer(0, self.buffers.vertex_buffer.slice(..));
+				pass.set_vertex_buffer(0, self.buffers.vertex_static_buffer.slice(..));
+				pass.set_vertex_buffer(1, self.buffers.vertex_deform_buffer.slice(..));
 				pass.set_index_buffer(self.buffers.index_buffer.slice(..), wgpu::IndexFormat::Uint16);
 
 				while i < len {
