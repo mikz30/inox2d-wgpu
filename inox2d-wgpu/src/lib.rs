@@ -181,7 +181,7 @@ impl WgpuRenderer {
 	) -> Result<Self> {
 		let textures = TextureManager::new(&device, &queue, model);
 		let mut buffers = BufferManager::new(&device);
-		buffers.update(&device, &queue, &model.puppet);
+		buffers.init(&device, &queue, &model.puppet);
 		let pipelines = PipelineManager::new(&device);
 
 		let uniform_capacity = UNIFORM_ALIGNMENT * 256; // Start with space for 256 sprites
