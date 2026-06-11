@@ -58,9 +58,8 @@ impl BufferManager {
 		}
 	}
 
-	/// Updates the GPU buffers with the latest vertex and index data from the puppet.
-	/// Resizes buffers if the new data exceeds current capacity.
-	pub fn update(&mut self, device: &wgpu::Device, queue: &wgpu::Queue, puppet: &Puppet) {
+	/// Initializes the GPU buffers, upload the initial vertex and index data to the GPU
+	pub fn init(&mut self, device: &wgpu::Device, queue: &wgpu::Queue, puppet: &Puppet) {
 		if let Some(render_ctx) = &puppet.render_ctx {
 			let buffers = &render_ctx.vertex_buffers;
 
@@ -90,7 +89,7 @@ impl BufferManager {
 
 			// Resize the buffers if needed
 			if required_vertex_size > self.vertex_capacity {
-				Self::resize_vertex_buffer(					
+				Self::resize_vertex_buffer(
 					device,
 					required_vertex_size,
 					&mut self.vertex_capacity,
@@ -102,7 +101,7 @@ impl BufferManager {
 					device,
 					required_index_size,
 					&mut self.index_capacity,
-					&mut self.index_buffer,					
+					&mut self.index_buffer,
 				);
 			}
 
@@ -116,6 +115,37 @@ impl BufferManager {
 
 			self.vertex_count = buffers.verts.len() as u32;
 			self.index_count = buffers.indices.len() as u32;
+		}
+	}
+
+	/// Updates the GPU vertex buffer with the latest vertex data from the puppet.
+	/// Resizes buffer if the new data exceeds current capacity.
+	pub fn update(&mut self, device: &wgpu::Device, queue: &wgpu::Queue, puppet: &Puppet) {
+		if let Some(render_ctx) = &puppet.render_ctx {
+			let buffers = &render_ctx.vertex_buffers;
+
+			self.update_vertices(buffers);
+
+			let vertices_bytes = bytemuck::cast_slice(&self.vertex_staging);
+
+			let required_vertex_size = vertices_bytes.len() as u64;
+
+			// Resize the buffers if needed
+			if required_vertex_size > self.vertex_capacity {
+				Self::resize_vertex_buffer(
+					device,
+					required_vertex_size,
+					&mut self.vertex_capacity,
+					&mut self.vertex_buffer,
+				);
+			}
+
+			// Upload data to GPU
+			if !vertices_bytes.is_empty() {
+				queue.write_buffer(&self.vertex_buffer, 0, vertices_bytes);
+			}
+
+			self.vertex_count = buffers.verts.len() as u32;
 		}
 	}
 
@@ -182,7 +212,6 @@ impl BufferManager {
 		target_size: u64,
 		vertex_capacity: &mut u64,
 		vertex_buffer: &mut wgpu::Buffer,
-		
 	) {
 		*vertex_capacity = target_size.max(*vertex_capacity * 2);
 		*vertex_buffer = device.create_buffer(&wgpu::BufferDescriptor {
@@ -197,7 +226,7 @@ impl BufferManager {
 		device: &wgpu::Device,
 		target_size: u64,
 		index_capacity: &mut u64,
-		index_buffer: &mut wgpu::Buffer,		
+		index_buffer: &mut wgpu::Buffer,
 	) {
 		*index_capacity = target_size.max(*index_capacity * 2);
 		*index_buffer = device.create_buffer(&wgpu::BufferDescriptor {

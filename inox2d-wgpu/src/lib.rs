@@ -57,7 +57,7 @@ impl CompositeResources {
 				mip_level_count: 1,
 				sample_count: 1,
 				dimension: wgpu::TextureDimension::D2,
-				format, 
+				format,
 				usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
 				view_formats: &[],
 			})
@@ -177,7 +177,7 @@ impl WgpuRenderer {
 	) -> Result<Self> {
 		let textures = TextureManager::new(&device, &queue, model);
 		let mut buffers = BufferManager::new(&device);
-		buffers.update(&device, &queue, &model.puppet);
+		buffers.init(&device, &queue, &model.puppet);
 		let pipelines = PipelineManager::new(&device);
 
 		let uniform_capacity = UNIFORM_ALIGNMENT * 256; // Start with space for 256 sprites
@@ -418,7 +418,7 @@ impl WgpuRenderer {
 								&mut last_pipeline_key,
 								self.surface_format,
 								*blend_mode,
-								current_mask_mode
+								current_mask_mode,
 							);
 
 							self.set_texture_bind_group(&mut pass, &mut last_texture_index, texture_index);
@@ -517,7 +517,7 @@ impl WgpuRenderer {
 							index_count,
 							blend_mode,
 							..
-						} => {							
+						} => {
 							self.set_active_pipeline(
 								&mut pass,
 								&mut pipelines,
