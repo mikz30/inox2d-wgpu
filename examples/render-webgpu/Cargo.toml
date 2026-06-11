@@ -28,3 +28,6 @@ features = [
     "HtmlElement",
     "Document",
 ]
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+web-time = "1.0.0"

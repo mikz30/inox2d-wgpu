@@ -15,6 +15,10 @@ use inox2d::node::InoxNodeUuid;
 use inox2d::puppet::Puppet;
 use inox2d::render::{InoxRenderer, TexturedMeshRenderCtx};
 use std::cell::RefCell;
+#[cfg(not(target_arch = "wasm32"))]
+use std::time::Instant;
+#[cfg(target_arch = "wasm32")]
+use web_time::Instant;
 
 use crate::buffers::BufferManager;
 use crate::cmd::{MaskingMode, RenderCommand};
@@ -57,7 +61,7 @@ impl CompositeResources {
 				mip_level_count: 1,
 				sample_count: 1,
 				dimension: wgpu::TextureDimension::D2,
-				format, 
+				format,
 				usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
 				view_formats: &[],
 			})
@@ -418,7 +422,7 @@ impl WgpuRenderer {
 								&mut last_pipeline_key,
 								self.surface_format,
 								*blend_mode,
-								current_mask_mode
+								current_mask_mode,
 							);
 
 							self.set_texture_bind_group(&mut pass, &mut last_texture_index, texture_index);
@@ -517,7 +521,7 @@ impl WgpuRenderer {
 							index_count,
 							blend_mode,
 							..
-						} => {							
+						} => {
 							self.set_active_pipeline(
 								&mut pass,
 								&mut pipelines,
@@ -571,11 +575,17 @@ impl WgpuRenderer {
 		}
 	}
 
-	pub fn clear(&self) -> Option<(wgpu::CommandEncoder, wgpu::TextureView, wgpu::SurfaceTexture)> {
+	pub fn clear(
+		&self,
+	) -> (
+		Option<(wgpu::CommandEncoder, wgpu::TextureView, wgpu::SurfaceTexture)>,
+		Instant,
+	) {
 		let current_texture = self.surface.get_current_texture();
+		let cpu_timer = Instant::now();
 		let output = match current_texture {
 			Ok(output) => output,
-			Err(_) => return None,
+			Err(_) => return (None, cpu_timer),
 		};
 		let view = output.texture.create_view(&wgpu::TextureViewDescriptor::default());
 		let mut encoder = self.device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
@@ -611,7 +621,7 @@ impl WgpuRenderer {
 				multiview_mask: None,
 			});
 		}
-		Some((encoder, view, output))
+		(Some((encoder, view, output)), cpu_timer)
 	}
 
 	fn set_active_pipeline(
@@ -834,12 +844,16 @@ impl WgpuRenderer {
 		mut encoder: wgpu::CommandEncoder,
 		view: &wgpu::TextureView,
 		output: wgpu::SurfaceTexture,
-	) {
+		cpu_timer: Instant,
+	) -> f64 {
 		self.write_uniforms();
 		self.render(&mut encoder, view);
+		let cpu_time = cpu_timer.elapsed().as_secs_f64();
 
 		let _ = &self.queue.submit(std::iter::once(encoder.finish()));
 		output.present();
+
+		cpu_time
 	}
 }
 
