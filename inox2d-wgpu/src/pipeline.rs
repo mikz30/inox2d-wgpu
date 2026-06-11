@@ -1,8 +1,8 @@
-use crate::vertex::Vertex;
+use crate::cmd::MaskingMode;
+use crate::vertex::{VertexDeform, VertexStatic};
 use inox2d::node::components::BlendMode;
 use std::borrow::Cow;
 use std::collections::HashMap;
-use crate::cmd::MaskingMode;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 struct PipelineKey {
@@ -158,7 +158,7 @@ impl PipelineManager {
 		device: &wgpu::Device,
 		surface_format: wgpu::TextureFormat,
 		blend_mode: BlendMode,
-		mask: MaskingMode, 
+		mask: MaskingMode,
 	) -> &wgpu::RenderPipeline {
 		// Use the ID for the cache key
 		let key = PipelineKey {
@@ -230,7 +230,7 @@ impl PipelineManager {
 				module: &self.shader,
 				entry_point: Some("vs_main"),
 				compilation_options: Default::default(),
-				buffers: &[Vertex::desc()],
+				buffers: &[VertexStatic::desc(), VertexDeform::desc()],
 			},
 			fragment: Some(wgpu::FragmentState {
 				module: &self.shader,
@@ -286,7 +286,7 @@ impl PipelineManager {
 				module: &self.composite_shader,
 				entry_point: Some("vs_composite"),
 				compilation_options: Default::default(),
-				buffers: &[Vertex::desc()],
+				buffers: &[VertexStatic::desc(), VertexDeform::desc()],
 			},
 			fragment: Some(wgpu::FragmentState {
 				module: &self.composite_shader,
