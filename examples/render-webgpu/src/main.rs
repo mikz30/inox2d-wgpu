@@ -49,6 +49,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
 
 	use common::scene::ExampleSceneController;
 	use inox2d::formats::inp::parse_inp;
+	use inox2d::model::Model;
 	use inox2d::puppet::Puppet;
 	use inox2d::render::InoxRendererExt;
 	use inox2d_wgpu::WgpuRenderer;
@@ -81,39 +82,52 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
 		.map_err(|e| e.to_string())?;
 	let model_bytes = res.bytes().await.map_err(|e| e.to_string())?;
 
-	let mut model = parse_inp(model_bytes.as_ref()).map_err(|e| e.to_string())?;
-	model.puppet.init_transforms();
-	model.puppet.init_rendering();
-	model.puppet.init_params();
-	model.puppet.init_physics();
+	let mut models = Vec::new();
+	for _ in 0..6 {
+		let mut model = parse_inp(model_bytes.as_ref()).map_err(|e| e.to_string())?;
+		model.puppet.init_transforms();
+		model.puppet.init_rendering();
+		model.puppet.init_params();
+		model.puppet.init_physics();
 
-	let mut renderer = inox2d_wgpu::from_canvas(&canvas, &model, Some(width), Some(height))
+		models.push(model);
+	}
+	let models_ref: Vec<&Model> = models.iter().collect();
+
+	let mut renderer = inox2d_wgpu::from_canvas(&canvas, &models_ref, Some(width), Some(height))
 		.await
 		.map_err(|e| e.to_string())?;
 
 	// Initial scale
 	let scale = 0.15 * (height as f32 / 800.0);
-	renderer.camera.scale = Vec2::splat(scale);
-
-	let scene_ctrl = ExampleSceneController::new(&renderer.camera, 0.5);
+	for camera in renderer.cameras.values_mut() {
+		camera.scale = Vec2::splat(scale);
+	}
+	// This example only controls the leftmost puppet
+	let scene_ctrl = ExampleSceneController::new(&renderer.cameras.get(&0).unwrap(), 0.5);
 
 	let renderer = Rc::new(RefCell::new(renderer));
-	let puppet = Rc::new(RefCell::new(model.puppet));
+	let mut puppets = Vec::new();
+	for model in models {
+		puppets.push(Rc::new(RefCell::new(model.puppet)));
+	}
 	let scene_ctrl = Rc::new(RefCell::new(scene_ctrl));
 	let window_ = web_sys::window().unwrap();
-	let animation_loop = {
+	let _animation_loop = {
 		let anim_loop_f: Rc<RefCell<Option<Closure<dyn FnMut()>>>> = Rc::new(RefCell::new(None));
 		let anim_loop_g = anim_loop_f.clone();
-		let puppet = puppet.clone();
+		let puppets = puppets.clone();
 		let renderer = renderer.clone();
 		let scene_ctrl = scene_ctrl.clone();
 
 		let window_loop = window_.clone();
 
 		*anim_loop_g.borrow_mut() = Some(Closure::new(move || {
-			scene_ctrl.borrow_mut().update(&mut renderer.borrow_mut().camera);
+			scene_ctrl
+				.borrow_mut()
+				.update(&mut renderer.borrow_mut().cameras.get_mut(&0).unwrap());
 
-			let (mut encoder, view, output) = match renderer.borrow_mut().clear() {
+			let (encoder, view, output) = match renderer.borrow_mut().clear() {
 				Some((encoder, view, output)) => (encoder, view, output),
 				None => {
 					let _ = request_animation_frame(&window_loop, anim_loop_f.borrow().as_ref().unwrap());
@@ -124,7 +138,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
 			let dt = scene_ctrl.borrow().current_elapsed();
 
 			// Render Closure
-			{
+			for (puppet_id, puppet) in puppets.iter().enumerate() {
 				let mut puppet = puppet.borrow_mut();
 				puppet.begin_frame();
 				let _ = puppet
@@ -134,7 +148,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
 					.set("Head:: Yaw-Pitch", Vec2::new(dt.cos(), dt.sin()));
 				puppet.end_frame(dt);
 
-				renderer.borrow_mut().on_begin_draw(&puppet);
+				renderer.borrow_mut().on_begin_draw(&puppet, puppet_id);
 				renderer.borrow_mut().draw(&puppet);
 			}
 			renderer.borrow_mut().on_end_draw(encoder, &view, output);
@@ -164,7 +178,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
 					let renderer = renderer.clone();
 					scene_ctrl
 						.borrow_mut()
-						.interact(event, &mut renderer.borrow_mut().camera);
+						.interact(event, &mut renderer.borrow_mut().cameras.get(&0).unwrap());
 				}
 			},
 			Event::AboutToWait => {
