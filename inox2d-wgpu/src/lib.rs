@@ -15,6 +15,7 @@ use inox2d::node::InoxNodeUuid;
 use inox2d::puppet::Puppet;
 use inox2d::render::{InoxRenderer, TexturedMeshRenderCtx};
 use std::cell::RefCell;
+use std::collections::HashMap;
 #[cfg(not(target_arch = "wasm32"))]
 use std::time::Instant;
 #[cfg(target_arch = "wasm32")]
@@ -131,11 +132,11 @@ impl CompositeResources {
 pub struct WgpuRenderer {
 	pub device: wgpu::Device,
 	pub queue: wgpu::Queue,
-
+	pub model_index: usize, // TODO: temporary, needs something like user id
 	pub pipelines: RefCell<PipelineManager>,
-	pub textures: TextureManager,
-	pub buffers: BufferManager,
-	pub camera: Camera,
+	pub textures: HashMap<usize, TextureManager>,
+	pub buffers: HashMap<usize, BufferManager>,
+	pub cameras: HashMap<usize, Camera>,
 	composite_resources: Option<CompositeResources>,
 
 	uniform_buffer: wgpu::Buffer,
@@ -144,7 +145,7 @@ pub struct WgpuRenderer {
 	uniform_staging: Vec<u8>,
 
 	// Command Recording
-	pub command_buffer: RefCell<Vec<RenderCommand>>,
+	pub command_buffer: RefCell<Vec<(usize, RenderCommand)>>,
 
 	// State tracking during recording
 	masking_stack: RefCell<Vec<MaskingMode>>,
@@ -166,24 +167,24 @@ pub struct WgpuRenderer {
 
 	depth_view: wgpu::TextureView,
 	depth_texture: wgpu::Texture,
+
+	current_puppet_id: Option<usize>,
 }
 
 impl WgpuRenderer {
 	pub fn new(
 		device: wgpu::Device,
 		queue: wgpu::Queue,
-		model: &Model,
 		surface_format: wgpu::TextureFormat,
 		width: u32,
 		height: u32,
 		surface: wgpu::Surface<'static>,
 		surface_config: wgpu::SurfaceConfiguration,
 	) -> Result<Self> {
-		let textures = TextureManager::new(&device, &queue, model);
-		let mut buffers = BufferManager::new(&device);
-		buffers.init(&device, &queue, &model.puppet);
-		let pipelines = PipelineManager::new(&device);
+		let textures = HashMap::new();
+		let buffers = HashMap::new();
 
+		let pipelines = PipelineManager::new(&device);
 		let uniform_capacity = UNIFORM_ALIGNMENT * 256; // Start with space for 256 sprites
 		let uniform_buffer = device.create_buffer(&wgpu::BufferDescriptor {
 			label: Some("Inox Dynamic Uniform Buffer"),
@@ -224,9 +225,10 @@ impl WgpuRenderer {
 		Ok(Self {
 			device,
 			queue,
+			model_index: 0,
 			textures,
 			buffers,
-			camera: Camera::default(),
+			cameras: HashMap::new(),
 			composite_resources: None,
 			pipelines: RefCell::new(pipelines),
 			uniform_buffer,
@@ -245,7 +247,32 @@ impl WgpuRenderer {
 			surface_config,
 			depth_texture,
 			depth_view,
+			current_puppet_id: None,
 		})
+	}
+
+	pub fn init(&mut self, models: &Vec<&Model>) {
+		for model in models {
+			let _ = self.add_model(model, 0);
+		}
+	}
+
+	pub fn add_model(&mut self, model: &Model, _key: usize) -> usize {
+		let texture = TextureManager::new(&self.device, &self.queue, model);
+		let mut buffer = BufferManager::new(&self.device);
+		buffer.init(&self.device, &self.queue, &model.puppet);
+		let mut camera = Camera::default();
+
+		let index = self.model_index;
+		// hardcode camera position to space them out for now
+		camera.position.x = (index as f32 - 2.5) * 2000.0;
+
+		self.textures.insert(index, texture);
+		self.buffers.insert(index, buffer);
+		self.cameras.insert(index, camera);
+
+		self.model_index += 1;
+		index
 	}
 
 	/// Clear previous commands. Call this at the start of your frame loop.
@@ -274,8 +301,8 @@ impl WgpuRenderer {
 
 		for cmd in cmds.iter() {
 			let u = match cmd {
-				RenderCommand::Draw { uniforms, .. } => Some(uniforms),
-				RenderCommand::EndComposite { uniforms, .. } => Some(uniforms),
+				(_, RenderCommand::Draw { uniforms, .. }) => Some(uniforms),
+				(_, RenderCommand::EndComposite { uniforms, .. }) => Some(uniforms),
 				_ => None,
 			};
 
@@ -353,8 +380,7 @@ impl WgpuRenderer {
 
 		while i < len {
 			// Check if we are starting a composite pass
-			let is_composite_start = matches!(commands[i], RenderCommand::BeginComposite);
-
+			let is_composite_start = matches!(commands[i].1, RenderCommand::BeginComposite);
 			if is_composite_start {
 				i += 1; // Consume BeginComposite
 
@@ -389,16 +415,22 @@ impl WgpuRenderer {
 					occlusion_query_set: None,
 					multiview_mask: None,
 				});
-
-				pass.set_vertex_buffer(0, self.buffers.vertex_static_buffer.slice(..));
-				pass.set_vertex_buffer(1, self.buffers.vertex_deform_buffer.slice(..));
-				pass.set_index_buffer(self.buffers.index_buffer.slice(..), wgpu::IndexFormat::Uint16);
+				// need to get the puppet id from the command
+				let puppet_id = commands[i].0;
+				let buffer = self
+					.buffers
+					.get(&puppet_id)
+					.expect(format!("{}:{} No buffer found for puppet id {}", file!(), line!(), puppet_id).as_str());
+				pass.set_vertex_buffer(0, buffer.vertex_static_buffer.slice(..));
+				pass.set_vertex_buffer(1, buffer.vertex_deform_buffer.slice(..));
+				pass.set_index_buffer(buffer.index_buffer.slice(..), wgpu::IndexFormat::Uint16);
 
 				while i < len {
-					let cmd = &commands[i];
+					let cmd = &commands[i].1; // TODO: Getting puppet id here can be redundant. Im just lazy right now to think through the logic.
+					let puppet_id = commands[i].0;
 					match cmd {
 						RenderCommand::EndComposite { .. } => break, // Exit to Main Pass
-						RenderCommand::BeginComposite => break,      // Nested? Exit to start new pass (flattened)
+						RenderCommand::BeginComposite => break, // Nested? Inox2d currently doesn't support nested composites (expect composite stack and more complicated optimization)
 
 						RenderCommand::SetMaskingMode(mode) => {
 							current_mask_mode = *mode;
@@ -426,7 +458,7 @@ impl WgpuRenderer {
 								current_mask_mode,
 							);
 
-							self.set_texture_bind_group(&mut pass, &mut last_texture_index, texture_index);
+							self.set_texture_bind_group(&mut pass, puppet_id, &mut last_texture_index, texture_index);
 							self.set_uniform_bind_group(&mut pass, dynamic_uniform_offset);
 
 							pass.draw_indexed(*index_offset..(*index_offset + *index_count), 0, 0..1);
@@ -469,12 +501,19 @@ impl WgpuRenderer {
 					multiview_mask: None,
 				});
 
-				pass.set_vertex_buffer(0, self.buffers.vertex_static_buffer.slice(..));
-				pass.set_vertex_buffer(1, self.buffers.vertex_deform_buffer.slice(..));
-				pass.set_index_buffer(self.buffers.index_buffer.slice(..), wgpu::IndexFormat::Uint16);
+				let puppet_id = commands[i].0;
+				let buffer = self
+					.buffers
+					.get(&puppet_id)
+					.expect(format!("{}:{} No buffer found for puppet id {}", file!(), line!(), puppet_id).as_str());
+
+				pass.set_vertex_buffer(0, buffer.vertex_static_buffer.slice(..));
+				pass.set_vertex_buffer(1, buffer.vertex_deform_buffer.slice(..));
+				pass.set_index_buffer(buffer.index_buffer.slice(..), wgpu::IndexFormat::Uint16);
 
 				while i < len {
-					let cmd = &commands[i];
+					let cmd = &commands[i].1;
+					let puppet_id = commands[i].0;
 					match cmd {
 						RenderCommand::BeginComposite => break, // Switch to Composite Pass
 
@@ -533,7 +572,7 @@ impl WgpuRenderer {
 								current_mask_mode,
 							);
 
-							self.set_texture_bind_group(&mut pass, &mut last_texture_index, texture_index);
+							self.set_texture_bind_group(&mut pass, puppet_id, &mut last_texture_index, texture_index);
 							self.set_uniform_bind_group(&mut pass, dynamic_uniform_offset);
 
 							pass.draw_indexed(*index_offset..(*index_offset + *index_count), 0, 0..1);
@@ -623,6 +662,7 @@ impl WgpuRenderer {
 				multiview_mask: None,
 			});
 		}
+		self.prepare();
 		(Some((encoder, view, output)), cpu_timer)
 	}
 
@@ -646,11 +686,21 @@ impl WgpuRenderer {
 	fn set_texture_bind_group(
 		&self,
 		pass: &mut wgpu::RenderPass,
+		puppet_id: usize,
 		last_texture_index: &mut Option<usize>,
 		texture_index: &usize,
 	) {
 		if *last_texture_index != Some(*texture_index) {
-			if let Some(bg) = self.textures.get_bind_group(*texture_index) {
+			let texture = self.textures.get(&puppet_id).expect(
+				format!(
+					"{}:{} Cannot find texture manager for puppet id {}",
+					file!(),
+					line!(),
+					puppet_id
+				)
+				.as_str(),
+			);
+			if let Some(bg) = texture.get_bind_group(*texture_index) {
 				pass.set_bind_group(0, bg, &[]);
 			}
 			*last_texture_index = Some(*texture_index);
@@ -679,7 +729,7 @@ impl InoxRenderer for WgpuRenderer {
 		let mode = MaskingMode::WriteMask(mask_id);
 		self.command_buffer
 			.borrow_mut()
-			.push(RenderCommand::SetMaskingMode(mode));
+			.push((self.current_puppet_id.unwrap(), RenderCommand::SetMaskingMode(mode)));
 		self.masking_stack.borrow_mut().push(mode);
 		*self.current_masking_mode.borrow_mut() = mode;
 		self.mask_threshold_stack.borrow_mut().push(masks.threshold);
@@ -692,7 +742,7 @@ impl InoxRenderer for WgpuRenderer {
 		if let Some(mode) = stack.last() {
 			self.command_buffer
 				.borrow_mut()
-				.push(RenderCommand::SetMaskingMode(*mode));
+				.push((self.current_puppet_id.unwrap(), RenderCommand::SetMaskingMode(*mode)));
 			*self.current_masking_mode.borrow_mut() = *mode;
 		}
 	}
@@ -703,7 +753,7 @@ impl InoxRenderer for WgpuRenderer {
 		let mode = MaskingMode::ReadMask(mask_id);
 		self.command_buffer
 			.borrow_mut()
-			.push(RenderCommand::SetMaskingMode(mode));
+			.push((self.current_puppet_id.unwrap(), RenderCommand::SetMaskingMode(mode)));
 		*self.current_masking_mode.borrow_mut() = mode;
 
 		// Update the stack top to reflect the phase change (Write -> Read)
@@ -726,7 +776,9 @@ impl InoxRenderer for WgpuRenderer {
 		// Push the current mode to the stack to preserve it across the composite group
 		let mode = *self.current_masking_mode.borrow();
 		self.masking_stack.borrow_mut().push(mode);
-		self.command_buffer.borrow_mut().push(RenderCommand::BeginComposite);
+		self.command_buffer
+			.borrow_mut()
+			.push((self.current_puppet_id.unwrap(), RenderCommand::BeginComposite));
 	}
 
 	fn finish_composite_content(
@@ -741,7 +793,7 @@ impl InoxRenderer for WgpuRenderer {
 		if let Some(mode) = stack.last() {
 			self.command_buffer
 				.borrow_mut()
-				.push(RenderCommand::SetMaskingMode(*mode));
+				.push((self.current_puppet_id.unwrap(), RenderCommand::SetMaskingMode(*mode)));
 			*self.current_masking_mode.borrow_mut() = *mode;
 		}
 
@@ -755,13 +807,27 @@ impl InoxRenderer for WgpuRenderer {
 			..Default::default()
 		};
 
-		self.command_buffer.borrow_mut().push(RenderCommand::EndComposite {
-			index_offset: self.buffers.composite_index_offset,
-			index_count: self.buffers.composite_index_count,
-			blend_mode: components.drawable.blending.mode,
-			opacity,
-			uniforms,
-		});
+		let puppet_id = self.current_puppet_id.unwrap();
+		let buffer = self.buffers.get(&puppet_id).expect(
+			format!(
+				"{}:{} Cannot find buffers for puppet id {}",
+				file!(),
+				line!(),
+				puppet_id
+			)
+			.as_str(),
+		);
+
+		self.command_buffer.borrow_mut().push((
+			puppet_id,
+			RenderCommand::EndComposite {
+				index_offset: buffer.composite_index_offset,
+				index_count: buffer.composite_index_count,
+				blend_mode: components.drawable.blending.mode,
+				opacity,
+				uniforms,
+			},
+		));
 	}
 
 	// -----------------------------------------------------------------
@@ -783,10 +849,14 @@ impl InoxRenderer for WgpuRenderer {
 			return;
 		}
 
+		let puppet_id = self.current_puppet_id.unwrap();
+		let camera = self
+			.cameras
+			.get(&puppet_id)
+			.expect(format!("{}:{} Cannot find camera for puppet id {}", file!(), line!(), puppet_id).as_str());
+
 		// 2. Calculate Uniforms
-		let mut projection = self
-			.camera
-			.matrix(glam::Vec2::new(self.viewport_width as f32, self.viewport_height as f32));
+		let mut projection = camera.matrix(glam::Vec2::new(self.viewport_width as f32, self.viewport_height as f32));
 
 		// WGPU Correction Matrix
 		let correction = glam::Mat4::from_cols_array_2d(&[
@@ -822,23 +892,32 @@ impl InoxRenderer for WgpuRenderer {
 		let texture_index = components.texture.tex_albedo.raw();
 
 		// 4. Push Command
-		self.command_buffer.borrow_mut().push(RenderCommand::Draw {
-			texture_index,
-			index_offset,
-			index_count,
-			blend_mode: components.drawable.blending.mode,
-			opacity,
-			uniforms,
-		});
+		self.command_buffer.borrow_mut().push((
+			self.current_puppet_id.unwrap(),
+			RenderCommand::Draw {
+				texture_index,
+				index_offset,
+				index_count,
+				blend_mode: components.drawable.blending.mode,
+				opacity,
+				uniforms,
+			},
+		));
 	}
 
 	fn on_begin_mask(&self, _mask: &inox2d::node::components::Mask) {}
 }
 
 impl WgpuRenderer {
-	pub fn on_begin_draw(&mut self, puppet: &Puppet) {
-		self.buffers.update(&self.device, &self.queue, puppet);
-		self.prepare();
+	// Note: per puppet
+	pub fn on_begin_draw(&mut self, puppet: &Puppet, puppet_id: usize) {
+		let buffer_manager = self
+			.buffers
+			.get_mut(&puppet_id)
+			.expect(format!("{}: {} Invalid puppet id: {}", file!(), line!(), puppet_id).as_str());
+		buffer_manager.update(&self.device, &self.queue, puppet);
+		self.current_puppet_id = Some(puppet_id);
+		// self.prepare();
 	}
 
 	pub fn on_end_draw(
@@ -862,7 +941,7 @@ impl WgpuRenderer {
 #[cfg(target_arch = "wasm32")]
 pub async fn from_canvas(
 	canvas: &web_sys::HtmlCanvasElement,
-	model: &Model,
+	models: &Vec<&Model>,
 	width: Option<u32>,
 	height: Option<u32>,
 ) -> Result<WgpuRenderer> {
@@ -922,7 +1001,8 @@ pub async fn from_canvas(
 
 	surface.configure(&device, &config);
 
-	let renderer = WgpuRenderer::new(device, queue, model, format, width, height, surface, config)?;
+	let mut renderer = WgpuRenderer::new(device, queue, format, width, height, surface, config)?;
+	renderer.init(models);
 	Ok(renderer)
 }
 
